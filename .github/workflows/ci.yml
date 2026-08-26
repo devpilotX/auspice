@@ -1,0 +1,169 @@
+# Lint, type check, test, migrate, build. Section 7.2 calls CI non-negotiable even solo,
+# because it is the only thing standing between a bad prompt or a bad migration and
+# production. Every job here also runs locally through the same commands.
+
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_FROZEN: "1"
+  PYTHONUTF8: "1"
+
+jobs:
+  python:
+    name: python
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+
+    services:
+      db:
+        image: postgis/postgis:17-3.5
+        env:
+          POSTGRES_USER: auspice
+          POSTGRES_PASSWORD: auspice
+          POSTGRES_DB: auspice_test
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U auspice -d auspice_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      AUSPICE_ENV: test
+      AUSPICE_DATABASE_URL: postgresql+psycopg://auspice:auspice@127.0.0.1:55432/auspice_test
+      AUSPICE_TEST_DATABASE_URL: postgresql+psycopg://auspice:auspice@127.0.0.1:55432/auspice_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install Python and dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Enable extensions
+        run: |
+          PGPASSWORD=auspice psql -h 127.0.0.1 -p 55432 -U auspice -d auspice_test \
+            -v ON_ERROR_STOP=1 -f infra/scripts/db-extensions.sql
+
+      - name: Lint
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Type check
+        run: uv run mypy
+
+      - name: Migrate
+        run: uv run alembic -c infra/alembic.ini upgrade head
+
+      - name: Schema has no pending drift
+        run: uv run alembic -c infra/alembic.ini check
+
+      - name: Registry and labels are valid
+        run: |
+          uv run auspice registry validate
+          uv run auspice labels validate
+
+      - name: Test
+        run: uv run pytest -q --cov --cov-report=term-missing --cov-report=xml
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.xml
+          if-no-files-found: ignore
+
+  web:
+    name: web
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint --workspace apps/web
+
+      - name: Type check
+        run: npm run typecheck --workspace apps/web
+
+      - name: Build
+        run: npm run build --workspace apps/web
+
+      - name: Performance budget
+        # Section 7.3: public pages under 100 KB of JS, app shell under 300 KB.
+        # Enforced here because performance rots silently.
+        run: npm run budget --workspace apps/web
+
+  visual:
+    name: visual regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    needs: web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Visual regression
+        # The report screen and the accuracy page must never silently break.
+        run: npm run test:visual --workspace apps/web
+
+      - name: Upload diff on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          if-no-files-found: ignore
+
+  writing:
+    name: writing rules
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: No em dashes, no banned phrases
+        # The writing rules are testable, so they are tested rather than trusted.
+        run: uv run --no-project python tools/check_writing.py

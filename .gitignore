@@ -1,0 +1,57 @@
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# ---------------------------------------------------------------------------
+# Node
+# ---------------------------------------------------------------------------
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+playwright-report/
+test-results/
+blob-report/
+
+# ---------------------------------------------------------------------------
+# Secrets. Never committed. See docs/OPERATIONS.md for the injection pattern.
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---------------------------------------------------------------------------
+# Local runtime state
+# ---------------------------------------------------------------------------
+/var/
+/.tools/
+/artifacts/
+mlruns/
+*.log
+
+# The raw corpus is content addressed object storage, not source control.
+/data/raw/
+/data/derived/
+
+# Generated API client types are built in CI from the OpenAPI document.
+/packages/shared-types/src/generated/
+
+# ---------------------------------------------------------------------------
+# OS
+# ---------------------------------------------------------------------------
+Thumbs.db
+.DS_Store
+desktop.ini

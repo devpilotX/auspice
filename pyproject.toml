@@ -1,0 +1,209 @@
+[project]
+name = "auspice"
+version = "0.1.0"
+description = "A rating bureau for the right to build: calibrated permission-risk forecasts with a public accuracy record."
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "UNLICENSED" }
+authors = [{ name = "Auspice" }]
+
+dependencies = [
+    # --- Configuration and typing spine -------------------------------------
+    "pydantic>=2.9",
+    "pydantic-settings>=2.5",
+    "structlog>=24.4",
+    "typer>=0.12",
+    "rich>=13.9",
+    "python-dateutil>=2.9",
+    "pyyaml>=6.0",
+    "orjson>=3.10",
+    # --- Database -----------------------------------------------------------
+    "sqlalchemy>=2.0.36",
+    "psycopg[binary]>=3.2",
+    "alembic>=1.14",
+    "geoalchemy2>=0.15",
+    "shapely>=2.0",
+    # --- Ingestion ----------------------------------------------------------
+    "httpx[http2]>=0.27",
+    "tenacity>=9.0",
+    "boto3>=1.35",
+    "feedparser>=6.0",
+    "selectolax>=0.3.21",
+    # --- Document processing ------------------------------------------------
+    "pymupdf>=1.24",
+    "pdfplumber>=0.11",
+    "pytesseract>=0.3.13",
+    "pillow>=10.4",
+    # --- Extraction ---------------------------------------------------------
+    "jsonschema>=4.23",
+    # --- Analytics and features --------------------------------------------
+    "numpy>=2.1",
+    "scipy>=1.14",
+    "polars>=1.12",
+    "duckdb>=1.1",
+    "pyarrow>=17.0",
+    # --- Modelling ----------------------------------------------------------
+    "scikit-learn>=1.5",
+    "xgboost>=2.1",
+    "lifelines>=0.29",
+    "numpyro>=0.15",
+    "jax>=0.4.35",
+    "shap>=0.46",
+    # shap pulls numba; without these floors the resolver reaches for an llvmlite
+    # that predates Python 3.13 and the build fails.
+    "numba>=0.61",
+    "llvmlite>=0.44",
+    "mlflow-skinny>=2.17",
+    # --- Memo ---------------------------------------------------------------
+    "jinja2>=3.1",
+    "pgvector>=0.5.0",
+]
+
+[project.optional-dependencies]
+api = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "python-multipart>=0.0.12",
+    "slowapi>=0.1.9",
+]
+transcribe = [
+    "faster-whisper>=1.0.3",
+]
+
+[project.scripts]
+auspice = "auspice.cli.main:app"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.7",
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "pytest-asyncio>=0.24",
+    "respx>=0.21",
+    "types-pyyaml>=6.0",
+    "types-jsonschema>=4.23",
+    "types-python-dateutil>=2.9",
+    "pandas-stubs>=2.2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/auspice"]
+
+# ---------------------------------------------------------------------------
+# Ruff: replaces flake8, isort, black and a dozen plugins.
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src", "apps/api", "tests"]
+extend-exclude = ["infra/migrations/versions", ".venv", "apps/web"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "A",    # flake8-builtins
+    "C4",   # flake8-comprehensions
+    "DTZ",  # flake8-datetimez: naive datetimes are a real bug in a bi-temporal system
+    "ISC",  # implicit str concat
+    "PIE",
+    "PT",   # pytest style
+    "RET",
+    "SIM",
+    "TID",
+    "ARG",  # unused arguments
+    "PTH",  # use pathlib
+    "PL",   # pylint subset
+    "TRY",  # tryceratops
+    "NPY",  # numpy specific
+    "RUF",
+]
+ignore = [
+    "PLR0913",  # too many arguments: statistical functions legitimately take many
+    "PLR2004",  # magic value comparison: thresholds are named in constants where it matters
+    "TRY003",   # long messages outside exception class: we want readable errors
+    "RET504",   # unnecessary assignment before return: named intermediates aid reading
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["PLR2004", "ARG001", "ARG002"]
+"src/auspice/cli/**" = ["PLR0913", "B008"]  # typer uses defaults as option declarations
+"apps/api/**" = ["B008"]                     # fastapi Depends() in defaults is the idiom
+
+[tool.ruff.lint.isort]
+known-first-party = ["auspice"]
+
+[tool.ruff.format]
+quote-style = "double"
+skip-magic-trailing-comma = false
+
+# ---------------------------------------------------------------------------
+# mypy: strict on the data layer. A silent type error here corrupts a corpus.
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unreachable = true
+warn_no_return = true
+disallow_any_unimported = false
+show_error_codes = true
+pretty = true
+files = ["src/auspice", "apps/api/app", "tests"]
+exclude = ["infra/migrations/versions", "\\.venv"]
+plugins = []
+
+[[tool.mypy.overrides]]
+module = [
+    "xgboost.*",
+    "lifelines.*",
+    "shap.*",
+    "numpyro.*",
+    "jax.*",
+    "jaxlib.*",
+    "sklearn.*",
+    "duckdb.*",
+    "fitz.*",
+    "pymupdf.*",
+    "pdfplumber.*",
+    "pytesseract.*",
+    "geoalchemy2.*",
+    "mlflow.*",
+    "faster_whisper.*",
+    "selectolax.*",
+    "feedparser.*",
+    "slowapi.*",
+]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+    "db: requires a live PostgreSQL with PostGIS",
+    "slow: takes more than a few seconds",
+    "network: reaches the public internet",
+]
+filterwarnings = [
+    "error::DeprecationWarning:auspice.*",
+]
+
+[tool.coverage.run]
+source = ["src/auspice"]
+branch = true
+
+[tool.coverage.report]
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError"]

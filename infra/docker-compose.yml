@@ -1,0 +1,78 @@
+# A single service and a database. Section 7.6 rejects Kubernetes outright: one person,
+# one service, one box. This file is what runs on the Hetzner machine and what runs in CI.
+#
+# On Windows without Docker, infra/scripts/bootstrap-postgres.ps1 produces an equivalent
+# local cluster with the same extensions and the same port.
+
+name: auspice
+
+services:
+  db:
+    image: postgis/postgis:17-3.5
+    container_name: auspice-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: auspice
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the environment}
+      POSTGRES_DB: auspice
+      # C collation matches the local bootstrap so sort order is identical everywhere.
+      POSTGRES_INITDB_ARGS: "--data-checksums --encoding=UTF8 --locale=C"
+    ports:
+      # Loopback only. Nothing about this database is reachable from the network.
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/db-extensions.sql:/docker-entrypoint-initdb.d/10-extensions.sql:ro
+    command:
+      - postgres
+      - -c
+      - shared_buffers=1GB
+      - -c
+      - work_mem=64MB
+      - -c
+      - maintenance_work_mem=512MB
+      - -c
+      - effective_cache_size=6GB
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - timezone=UTC
+      - -c
+      - log_min_duration_statement=500
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auspice -d auspice"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    container_name: auspice-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      AUSPICE_ENV: production
+      AUSPICE_DATABASE_URL: postgresql+psycopg://auspice:${POSTGRES_PASSWORD}@db:5432/auspice
+      AUSPICE_RAW_BACKEND: s3
+      AUSPICE_RAW_BUCKET: ${AUSPICE_RAW_BUCKET}
+      AUSPICE_RAW_ENDPOINT_URL: ${AUSPICE_RAW_ENDPOINT_URL}
+      AUSPICE_RAW_ACCESS_KEY_ID: ${AUSPICE_RAW_ACCESS_KEY_ID}
+      AUSPICE_RAW_SECRET_ACCESS_KEY: ${AUSPICE_RAW_SECRET_ACCESS_KEY}
+      AUSPICE_CRAWLER_CONTACT: ${AUSPICE_CRAWLER_CONTACT}
+      AUSPICE_API_KEYS: ${AUSPICE_API_KEYS}
+      AUSPICE_LLM_PROVIDER: ${AUSPICE_LLM_PROVIDER:-none}
+      AUSPICE_LLM_API_KEY: ${AUSPICE_LLM_API_KEY:-}
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz').status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
