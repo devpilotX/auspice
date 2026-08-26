@@ -1,0 +1,591 @@
+# The jurisdiction registry.
+#
+# Stage 0 of the pipeline, and the file everything else depends on. Section 6.0: build this
+# by hand before writing a single scraper, because a pipeline pointed at the wrong body
+# produces a corpus that looks complete and is worthless.
+#
+# Rules for editing this file:
+#
+#   1. Every assertion that is not directly observable carries a source URL and the date it
+#      was read. The Pydantic model in src/auspice/pipeline/registry/models.py refuses a
+#      jurisdiction whose legal_framework has no source.
+#   2. Boundary geometry is not in this file. It is fetched from the Census TIGERweb service
+#      keyed on the FIPS code, by `auspice registry boundaries`. A hand typed polygon has no
+#      provenance and cannot be checked.
+#   3. civic_platform is left as unknown here and detected from the live site by
+#      `auspice registry probe`, which writes data/registry/platforms.detected.yaml. This file
+#      stays hand authored; the detected file is regenerable.
+#   4. discretion_index is not in this file either. It is computed from the jurisdiction's
+#      own decision history by `auspice registry recompute`. Asserting it by hand would be
+#      inventing the number the model is supposed to learn.
+#   5. Election calendars are expressed as a rule, not a list of dates. A pasted list rots and
+#      a wrong date silently corrupts months_to_next_election. See registry/elections.py.
+#
+# Twelve counties, not forty. Section 10.1 argues for forty and it is right about the target,
+# but depth beats breadth absolutely, and twelve counties labelled properly is a better
+# foundation than forty counties labelled thinly. The remaining twenty eight are added as the
+# labelling work reaches them.
+
+version: "0.1.0"
+beachhead: "United States, data centre siting, discretionary rezoning and special use only"
+compiled_on: 2026-08-27
+compiled_by: "Auspice"
+
+jurisdictions:
+  # =========================================================================
+  # Virginia. Dillon's Rule, and the densest data centre market on earth.
+  # =========================================================================
+  - slug: us-va-loudoun
+    name: Loudoun County
+    kind: county
+    region: VA
+    fips: "51107"
+    admin_codes:
+      state_fips: "51"
+      county_fips: "107"
+      census_geoid: "51107"
+    legal_framework: dillons_rule
+    legal_framework_source:
+      value: >-
+        Virginia is a Dillon's Rule state. Counties hold only those powers expressly granted
+        by the General Assembly, which is why state pre-emption is a live variable here and
+        not in a home rule state.
+      source: https://law.lis.virginia.gov/vacode/title15.2/chapter22/
+      retrieved_on: 2026-08-27
+    target_use_classes: [data_center_hyperscale, data_center_colocation, substation_transmission]
+    why_in_scope: >-
+      The largest concentration of data centre capacity in the world, and the jurisdiction with
+      the deepest public decision record for the use class, which makes it the anchor for the
+      pooling clusters.
+    bodies:
+      - name: Board of Supervisors
+        kind: board_of_supervisors
+        seats: 9
+        quorum: 5
+        vote_threshold: simple_majority
+        recommendation_is_binding: false
+        meeting_cadence: twice monthly
+        election_rule:
+          term_years: 4
+          anchor_year: 2023
+          source: https://law.lis.virginia.gov/vacode/title15.2/chapter22/
+          retrieved_on: 2026-08-27
+        source: https://www.loudoun.gov/
+        retrieved_on: 2026-08-27
+      - name: Planning Commission
+        kind: planning_commission
+        seats: 9
+        quorum: 5
+        recommendation_is_binding: true
+        meeting_cadence: twice monthly
+        source: https://www.loudoun.gov/
+        retrieved_on: 2026-08-27
+    sources:
+      - kind: agenda
+        platform: unknown
+        url: https://www.loudoun.gov/
+        refresh_hours: 24
+
+  - slug: us-va-prince-william
+    name: Prince William County
+    kind: county
+    region: VA
+    fips: "51153"
+    admin_codes:
+      state_fips: "51"
+      county_fips: "153"
+      census_geoid: "51153"
+    legal_framework: dillons_rule
+    legal_framework_source:
+      value: >-
+        Virginia is a Dillon's Rule state. Counties hold only expressly granted powers.
+      source: https://law.lis.virginia.gov/vacode/title15.2/chapter22/
+      retrieved_on: 2026-08-27
+    target_use_classes: [data_center_hyperscale, data_center_colocation, substation_transmission]
+    why_in_scope: >-
+      The Digital Gateway rezonings made this the most contested data centre docket in the
+      country, which means an unusually rich record of organised opposition and of a board
+      overruling its own staff.
+    bodies:
+      - name: Board of County Supervisors
+        kind: board_of_supervisors
+        seats: 8
+        quorum: 5
+        vote_threshold: simple_majority
+        recommendation_is_binding: false
+        meeting_cadence: twice monthly
+        election_rule:
+          term_years: 4
+          anchor_year: 2023
+          source: https://law.lis.virginia.gov/vacode/title15.2/chapter22/
+          retrieved_on: 2026-08-27
+        source: https://www.pwcva.gov/
+        retrieved_on: 2026-08-27
+      - name: Planning Commission
+        kind: planning_commission
+        seats: 8
+        quorum: 5
+        recommendation_is_binding: true
+        source: https://www.pwcva.gov/
+        retrieved_on: 2026-08-27
+    sources:
+      - kind: agenda
+        platform: unknown
+        url: https://www.pwcva.gov/
+        refresh_hours: 24
+
+  - slug: us-va-henrico
+    name: Henrico County
+    kind: county
+    region: VA
+    fips: "51087"
+    admin_codes:
+      state_fips: "51"
+      county_fips: "087"
+      census_geoid: "51087"
+    legal_framework: dillons_rule
+    legal_framework_source:
+      value: >-
+        Virginia is a Dillon's Rule state. Counties hold only expressly granted powers.
+      source: https://law.lis.virginia.gov/vacode/title15.2/chapter22/
+      retrieved_on: 2026-08-27
+    target_use_classes: [data_center_hyperscale, data_center_colocation]
+    why_in_scope: >-
+      A fast growing secondary Virginia market with a five seat board, which gives a useful
+      contrast to Loudoun on board size while holding the state legal framework constant.
+    bodies:
+      - name: Board of Supervisors
+        kind: board_of_supervisors
+        seats: 5
+        quorum: 3
+        vote_threshold: simple_majority
+        recommendation_is_binding: false
+        election_rule:
+          term_years: 4
+          anchor_year: 2023
+          source: https://law.lis.virginia.gov/vacode/title15.2/chapter22/
+          retrieved_on: 2026-08-27
+        source: https://henrico.us/
+        retrieved_on: 2026-08-27
+      - name: Planning Commission
+        kind: planning_commission
+        seats: 5
+        quorum: 3
+        recommendation_is_binding: true
+        source: https://henrico.us/
+        retrieved_on: 2026-08-27
+    sources:
+      - kind: agenda
+        platform: unknown
+        url: https://henrico.us/
+        refresh_hours: 24
+
+  # =========================================================================
+  # The 2026 moratorium belt. Every one of these appears in section 18.2 of the
+  # specification as documented evidence that the trend is accelerating.
+  # =========================================================================
+  - slug: us-in-boone
+    name: Boone County
+    kind: county
+    region: IN
+    fips: "18011"
+    admin_codes:
+      state_fips: "18"
+      county_fips: "011"
+      census_geoid: "18011"
+    legal_framework: home_rule
+    legal_framework_source:
+      value: >-
+        Indiana granted units of local government home rule powers in Title 36, so a county
+        may act unless the General Assembly has withheld the power. That is the opposite
+        default from Virginia and it changes how much a state level pre-emption feature is
+        worth here.
+      source: https://iga.in.gov/laws/2024/ic/titles/36
+      retrieved_on: 2026-08-27
+    target_use_classes: [data_center_hyperscale, data_center_colocation]
+    why_in_scope: >-
+      Adopted a data centre moratorium in June 2026 after a large announced project, and had
+      previously commissioned a paid single site certification study, which is direct evidence
+      of willingness to pay for exactly this analysis.
+    bodies:
+      - name: Board of County Commissioners
+        kind: county_commission
+        seats: 3
+        quorum: 2
+        vote_threshold: simple_majority
+        recommendation_is_binding: false
+        election_rule:
+          term_years: 4
+          anchor_year: 2024
+          stagger_offset_years: 2
+          source: https://iga.in.gov/laws/2024/ic/titles/36
+          retrieved_on: 2026-08-27
+        source: https://boonecounty.in.gov/
+        retrieved_on: 2026-08-27
+    sources:
+      - kind: agenda
+        platform: unknown
+        url: https://boonecounty.in.gov/
+        refresh_hours: 24
+    notes: >-
+      The Area Plan Commission is the recommending body for rezonings here, and its seat
+      composition is set by interlocal agreement rather than published as a fixed number. It is
+      deliberately not asserted until the composition is read from a primary source.
+
+  - slug: us-ia-linn
+    name: Linn County
+    kind: county
+    region: IA
+    fips: "19113"
+    admin_codes:
+      state_fips: "19"
+      county_fips: "113"
+      census_geoid: "19113"
+    legal_framework: home_rule
+    legal_framework_source:
+      value: >-
+        Iowa counties hold home rule power under Chapter 331 and may exercise any power not
+        inconsistent with state law.
+      source: https://www.legis.iowa.gov/docs/code/331.pdf
+      retrieved_on: 2026-08-27
+    target_use_classes: [data_center_hyperscale, data_center_colocation, solar_utility]
+    why_in_scope: >-
+      A three seat board voted a data centre moratorium in 2026, and the same board is
+      publicly debating expanding to five seats, which is a rare natural experiment in whether
+      board size changes outcomes for this use class.
+    bodies:
+      - name: Board of Supervisors
+        kind: board_of_supervisors
+        seats: 3
+        quorum: 2
+        vote_threshold: simple_majority
+        recommendation_is_binding: false
+        election_rule:
+          term_years: 4
+          anchor_year: 2024
+          stagger_offset_years: 2
+          source: https://www.legis.iowa.gov/docs/code/331.pdf
+          retrieved_on: 2026-08-27
+        source: https://www.linncountyiowa.gov/27/Government
+        retrieved_on: 2026-08-27
+    sources:
+      - kind: agenda
+        platform: unknown
+        url: https://www.linncountyiowa.gov/
+        refresh_hours: 24
+
+  - slug: us-fl-sarasota
+    name: Sarasota County
+    kind: county
+    region: FL
+    fips: "12115"
+    admin_codes:
+      state_fips: "12"
+      county_fips: "115"
+      census_geoid: "12115"
+    legal_framework: home_rule
+    legal_framework_source:
+      value: >-
+        Florida charter counties hold broad home rule power under Article VIII of the state
+        constitution. Sarasota is a charter county.
+      source: https://www.flsenate.gov/Laws/Constitution
+      retrieved_on: 2026-08-27
+    target_use_classes: [data_center_hyperscale, data_center_colocation]
+    why_in_scope: >-
+      Rejected data centre applications in July 2026 in a market with no prior history of the
+      use class, which is the thin data case the hierarchical model exists to handle.
+    bodies:
+      - name: Board of County Commissioners
+        kind: county_commission
+        seats: 5
+        quorum: 3
+        vote_threshold: simple_majority
+        recommendation_is_binding: false
+        election_rule:
+          term_years: 4
+          anchor_year: 2024
+          stagger_offset_years: 2
+          source: https://www.flsenate.gov/Laws/Constitution
+          retrieved_on: 2026-08-27
+        source: https://www.scgov.net/
+        retrieved_on: 2026-08-27
+    sources:
+      - kind: agenda
+        platform: unknown
+        url: https://www.scgov.net/
+        refresh_hours: 24
+
+  - slug: us-ga-newton
+    name: Newton County
+    kind: county
+    region: GA
+    fips: "13217"
+    admin_codes:
+      state_fips: "13"
+      county_fips: "217"
+      census_geoid: "13217"
+    legal_framework: home_rule
+    legal_framework_source:
+      value: >-
+        Georgia counties hold limited home rule under Article IX of the state constitution, and
+        Newton County's governing authority is additionally set by a local Act of the General
+        Assembly that establishes a chair plus five district commissioners.
+      source: https://www.nlc.org/resource/cities-101-delegation-of-power/
+      retrieved_on: 2026-08-27
+    target_use_classes: [data_center_hyperscale, data_center_colocation]
+    why_in_scope: >-
+      Passed data centre and convenience store moratoria in the same 2026 session, and adopted
+      Resolution R-040726b, which gives a dated instrument to test the days_since_rule_change
+      feature against a real outcome.
+    bodies:
+      - name: Board of Commissioners
+        kind: county_commission
+        seats: 6
+        quorum: 4
+        vote_threshold: simple_majority
+        recommendation_is_binding: false
+        meeting_cadence: twice monthly
+        election_rule:
+          term_years: 4
+          anchor_year: 2024
+          stagger_offset_years: 2
+          source: https://www.nlc.org/resource/cities-101-delegation-of-power/
+          retrieved_on: 2026-08-27
+        source: https://www.newtoncountyga.gov/
+        retrieved_on: 2026-08-27
+    sources:
+      - kind: agenda
+        platform: unknown
+        url: https://www.newtoncountyga.gov/
+        refresh_hours: 24
+    notes: >-
+      Six seats: a chair elected countywide who votes, plus five district commissioners. The
+      chair being a voting member matters for the swing_seat_count feature.
+
+  - slug: us-wy-laramie
+    name: Laramie County
+    kind: county
+    region: WY
+    fips: "56021"
+    admin_codes:
+      state_fips: "56"
+      county_fips: "021"
+      census_geoid: "56021"
+    legal_framework: dillons_rule
+    legal_framework_source:
+      value: >-
+        Wyoming counties hold only powers granted by the legislature under Title 18, which
+        makes this a Dillon's Rule jurisdiction.
+      source: https://wyoleg.gov/statutes/compress/title18.pdf
+      retrieved_on: 2026-08-27
+    target_use_classes: [data_center_hyperscale, data_center_colocation, wind_onshore]
+    why_in_scope: >-
+      Cheyenne's council rejected a data centre moratorium in May 2026, which is the negative
+      case the corpus needs. A model trained only on counties that restricted the use class
+      will systematically over predict restriction.
+    bodies:
+      - name: Board of County Commissioners
+        kind: county_commission
+        seats: 5
+        quorum: 3
+        vote_threshold: simple_majority
+        recommendation_is_binding: false
+        election_rule:
+          term_years: 4
+          anchor_year: 2024
+          stagger_offset_years: 2
+          source: https://wyoleg.gov/statutes/compress/title18.pdf
+          retrieved_on: 2026-08-27
+        source: https://www.laramiecountywy.gov/
+        retrieved_on: 2026-08-27
+    sources:
+      - kind: agenda
+        platform: unknown
+        url: https://www.laramiecountywy.gov/
+        refresh_hours: 24
+
+  # =========================================================================
+  # Established and emerging markets, chosen to span board size, legal framework
+  # and prior industrial character.
+  # =========================================================================
+  - slug: us-oh-licking
+    name: Licking County
+    kind: county
+    region: OH
+    fips: "39089"
+    admin_codes:
+      state_fips: "39"
+      county_fips: "089"
+      census_geoid: "39089"
+    legal_framework: dillons_rule
+    legal_framework_source:
+      value: >-
+        Ohio grants home rule to municipalities but not to non charter counties, which hold
+        only the powers the General Assembly confers. Licking County is not a charter county,
+        so it is treated as Dillon's Rule.
+      source: https://www.nlc.org/resource/cities-101-delegation-of-power/
+      retrieved_on: 2026-08-27
+    target_use_classes: [data_center_hyperscale, data_center_colocation, substation_transmission]
+    why_in_scope: >-
+      Multiple hyperscale campuses landed here inside three years, so it is the clearest case
+      of a county whose base rate changed regime mid sample. That is exactly what
+      approval_rate_trend is meant to catch.
+    bodies:
+      - name: Board of County Commissioners
+        kind: county_commission
+        seats: 3
+        quorum: 2
+        vote_threshold: simple_majority
+        recommendation_is_binding: false
+        election_rule:
+          term_years: 4
+          anchor_year: 2024
+          stagger_offset_years: 2
+          source: https://www.nlc.org/resource/cities-101-delegation-of-power/
+          retrieved_on: 2026-08-27
+        source: https://lickingcounty.gov/
+        retrieved_on: 2026-08-27
+    sources:
+      - kind: agenda
+        platform: unknown
+        url: https://lickingcounty.gov/
+        refresh_hours: 24
+    notes: >-
+      Much of the hyperscale activity sits inside municipalities that annexed the land, so the
+      jurisdiction chain for a parcel here often ends at a city rather than the county. The
+      spatial join has to resolve that, and it is the main reason this county is in the first
+      twelve.
+
+  - slug: us-az-maricopa
+    name: Maricopa County
+    kind: county
+    region: AZ
+    fips: "04013"
+    admin_codes:
+      state_fips: "04"
+      county_fips: "013"
+      census_geoid: "04013"
+    legal_framework: dillons_rule
+    legal_framework_source:
+      value: >-
+        Arizona counties are creatures of the legislature under Title 11 and hold only granted
+        powers, unlike Arizona charter cities.
+      source: https://www.azleg.gov/arsDetail/?title=11
+      retrieved_on: 2026-08-27
+    target_use_classes: [data_center_hyperscale, data_center_colocation, solar_utility, battery_storage]
+    why_in_scope: >-
+      A very large pipeline in a water stressed basin, which is the case where water_stress_index
+      should dominate power availability. If the model cannot see that here it will not see it
+      anywhere.
+    bodies:
+      - name: Board of Supervisors
+        kind: board_of_supervisors
+        seats: 5
+        quorum: 3
+        vote_threshold: simple_majority
+        recommendation_is_binding: false
+        election_rule:
+          term_years: 4
+          anchor_year: 2022
+          source: https://www.azleg.gov/arsDetail/?title=11
+          retrieved_on: 2026-08-27
+        source: https://www.maricopa.gov/
+        retrieved_on: 2026-08-27
+    sources:
+      - kind: agenda
+        platform: unknown
+        url: https://www.maricopa.gov/
+        refresh_hours: 24
+
+  - slug: us-or-morrow
+    name: Morrow County
+    kind: county
+    region: OR
+    fips: "41049"
+    admin_codes:
+      state_fips: "41"
+      county_fips: "049"
+      census_geoid: "41049"
+    legal_framework: mixed
+    legal_framework_source:
+      value: >-
+        Oregon counties may adopt a home rule charter but are otherwise governed by general
+        law. Morrow County is a general law county, and Oregon's statewide land use programme
+        constrains local discretion in a way that has no analogue in the other states here, so
+        the framework is recorded as mixed rather than forced into a binary.
+      source: https://www.nlc.org/resource/cities-101-delegation-of-power/
+      retrieved_on: 2026-08-27
+    target_use_classes: [data_center_hyperscale, data_center_colocation, wind_onshore, solar_utility]
+    why_in_scope: >-
+      A small rural county carrying a very large data centre load, under a statewide land use
+      regime. It is the strongest single test of whether the model generalises across legal
+      regimes rather than memorising one.
+    bodies:
+      - name: Board of Commissioners
+        kind: county_commission
+        seats: 3
+        quorum: 2
+        vote_threshold: simple_majority
+        recommendation_is_binding: false
+        election_rule:
+          term_years: 4
+          anchor_year: 2024
+          stagger_offset_years: 2
+          source: https://www.nlc.org/resource/cities-101-delegation-of-power/
+          retrieved_on: 2026-08-27
+        source: https://www.co.morrow.or.us/
+        retrieved_on: 2026-08-27
+    sources:
+      - kind: agenda
+        platform: unknown
+        url: https://www.co.morrow.or.us/
+        refresh_hours: 24
+
+  - slug: us-tx-tarrant
+    name: Tarrant County
+    kind: county
+    region: TX
+    fips: "48439"
+    admin_codes:
+      state_fips: "48"
+      county_fips: "439"
+      census_geoid: "48439"
+    legal_framework: dillons_rule
+    legal_framework_source:
+      value: >-
+        Texas counties hold only powers granted by the legislature under the Local Government
+        Code, and notably have no general zoning power outside municipal limits. Texas home
+        rule cities are the opposite case.
+      source: https://statutes.capitol.texas.gov/Docs/LG/htm/LG.81.htm
+      retrieved_on: 2026-08-27
+    target_use_classes: [data_center_hyperscale, data_center_colocation, battery_storage]
+    why_in_scope: >-
+      Texas counties cannot zone, so almost every discretionary decision for this use class
+      happens inside a city. Including the county forces the jurisdiction chain resolution to
+      be correct rather than convenient, and Fort Worth's 2026 data centre ordinance fight is
+      the specific decision to test it against.
+    bodies:
+      - name: Commissioners Court
+        kind: county_commission
+        seats: 5
+        quorum: 3
+        vote_threshold: simple_majority
+        recommendation_is_binding: false
+        election_rule:
+          term_years: 4
+          anchor_year: 2024
+          stagger_offset_years: 2
+          source: https://statutes.capitol.texas.gov/Docs/LG/htm/LG.81.htm
+          retrieved_on: 2026-08-27
+        source: https://www.tarrantcountytx.gov/
+        retrieved_on: 2026-08-27
+    sources:
+      - kind: agenda
+        platform: unknown
+        url: https://www.tarrantcountytx.gov/
+        refresh_hours: 24
+    notes: >-
+      Five members: the county judge, elected countywide, plus four precinct commissioners. The
+      county judge votes. Because Texas counties have no zoning authority, the discretion_index
+      computed for this county will be low and that is correct, not a data gap. The municipal
+      jurisdictions inside it are the ones that carry the decisions.

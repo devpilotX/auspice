@@ -1,0 +1,337 @@
+# The labelled decision dataset.
+#
+# Read data/labels/README.md before adding a row. The short version: every row carries either
+# one official record or two independent contemporary reports, and every citation carries a
+# verbatim quote that `auspice labels verify` checks against the fetched document.
+#
+# This file is well short of the 400 rows the kill test requires. That is stated here rather
+# than hidden, and `auspice labels stats` prints the gap. Nothing plausible looking has been
+# added to close it. A fabricated row produces a kill test that passes and a company that does
+# not work.
+
+version: "0.1.0"
+protocol: "data/labels/README.md"
+compiled_on: 2026-08-27
+
+# ===========================================================================
+# DECISIONS
+# Applications by a project to a body, and what the body did.
+# ===========================================================================
+decisions:
+  - label_id: pwc-digital-gateway-rezoning-2023
+    jurisdiction: us-va-prince-william
+    labelled_by: Auspice
+    labelled_on: 2026-08-27
+    case_number: null
+    body: board_of_supervisors
+    applicant: QTS Data Centers and Compass Datacenters
+    project_name: PW Digital Gateway
+    use_class: data_center_hyperscale
+    relief_sought: [rezoning, comprehensive_plan_amendment]
+    by_right: false
+    acres: 2100
+    decided_on: 2023-12-13
+    outcome: approved
+    vote_for: 4
+    vote_against: 3
+    vote_abstain: 1
+    objection_grounds: [environmental, visual, process, water]
+    organised_opposition: true
+    notes: >-
+      Approved after a hearing that ran roughly 27 to 28 hours. A circuit court later voided the
+      rezoning on procedural grounds, the Court of Appeals affirmed on 31 March 2026, and the
+      remaining developer dropped its appeal, so the project is dead. The label records what the
+      body decided, which is what model 1 predicts. Post approval reversal is a separate risk
+      and is carried as litigation events rather than folded into the approval label. See
+      docs/METHODOLOGY.md, the section on what counts as a yes.
+    citations:
+      - url: https://wtop.com/prince-william-county/2023/12/prince-william-supervisors-approve-pw-digital-gateway-expected-to-be-the-worlds-largest-data-center-corridor/
+        document_title: "Prince William supervisors approve PW Digital Gateway, expected to be the world's largest data center corridor"
+        quote: "The final vote in favor was 4-3, with Democratic Supervisor Kenny Boddye of the Occoquan District abstaining."
+        retrieved_on: 2026-08-27
+        kind: secondary
+      - url: https://www.potomaclocal.com/2023/12/13/prince-william-is-new-data-center-king-digital-gateway-approved/
+        document_title: "Prince William soon to be new data center king"
+        quote: "The Prince William Board of County Supervisors approved the contentious project after a record-breaking 28-hour meeting that began at 10 a.m. Tuesday, Dec. 12, and wrapped up just after 1 p.m. today, Wednesday, Dec. 13, 2023."
+        retrieved_on: 2026-08-27
+        kind: secondary
+      - url: https://www.pwcva.gov/department/planning-office/pw-digital-gateway/
+        document_title: "PW Digital Gateway, Prince William County Planning Office"
+        quote: "The Board of County Supervisors decisions to approve the rezoning of the property are void and the zoning of the properties reverts back to the original zoning district immediately prior to the Board of County Supervisors approval of the rezonings."
+        retrieved_on: 2026-08-27
+        kind: primary
+
+# ===========================================================================
+# INSTRUMENTS
+# The rules, and when they changed. Section 6.6: knowing the current ordinance is a
+# commodity three companies already sell. Knowing that it changed 90 days ago, who
+# moved it, and which neighbouring county is next, is the product.
+# ===========================================================================
+instruments:
+  - label_id: loudoun-zoam-2025-0001-by-right-ended
+    jurisdiction: us-va-loudoun
+    labelled_by: Auspice
+    labelled_on: 2026-08-27
+    kind: zoning_ordinance
+    body: board_of_supervisors
+    citation_ref: "ZOAM and CPAM adopted 18 March 2025"
+    title: Zoning Ordinance amendment making data centres a special exception use
+    adopted_on: 2025-03-18
+    effective_on: 2025-03-18
+    applies_to_use_classes: [data_center_hyperscale, data_center_colocation, data_center_edge]
+    vote_for: 7
+    vote_against: 2
+    restrictions:
+      by_right_removed: true
+      requires_special_exception: true
+    notes: >-
+      The single most consequential rule change in the corpus. It converted the largest data
+      centre market in the world from ministerial approval to a discretionary public hearing,
+      which is exactly the transition the discretion_index is meant to measure. Adopted seven to
+      two, so it is durable rather than one seat away from reversal.
+    citations:
+      - url: https://www.mcguirewoods.com/client-resources/alerts/2025/4/loudoun-county-eliminates-by-right-use-for-data-centers-increasing-development-hurdles/
+        document_title: "Loudoun County Eliminates By-Right Use for Data Centers, Increasing Development Hurdles"
+        quote: "At its March 18, 2025, business meeting, the Loudoun County Board of Supervisors voted 7-2 to approve a Zoning Ordinance amendment making data centers a special exception use in zoning districts in which they were previously a by-right use."
+        retrieved_on: 2026-08-27
+        kind: secondary
+      - url: https://www.hklaw.com/en/insights/publications/2025/04/loudoun-county-virginia-eliminates-by-right-data-center-development
+        document_title: "Loudoun County, Virginia, Eliminates By-Right Data Center Development"
+        quote: "On March 18, 2025, the Loudoun County Board of Supervisors approved a comprehensive plan amendment (CPAM) and zoning ordinance amendment (ZOAM) that eliminated by-right development of data centers within Loudoun County."
+        retrieved_on: 2026-08-27
+        kind: secondary
+      - url: https://www.loudoun.gov/6221/Phase-1-Project-Plan-for-Data-Center-Sta
+        document_title: "Phase 1: Project Plan for Data Center Standards and Locations"
+        quote: "The Board also adopted a Grandfathering Resolution. This resolution outlines rules under which certain data center applications accepted prior to February 12, 2025, may continue to be reviewed and processed without obtaining SPEX approval for a data center use."
+        retrieved_on: 2026-08-27
+        kind: primary
+
+  - label_id: loudoun-grandfathering-resolution-2025
+    jurisdiction: us-va-loudoun
+    labelled_by: Auspice
+    labelled_on: 2026-08-27
+    kind: resolution
+    body: board_of_supervisors
+    citation_ref: "2025 Data Center Grandfathering Resolution"
+    title: Grandfathering resolution for applications accepted before 12 February 2025
+    adopted_on: 2025-03-18
+    effective_on: 2025-03-18
+    applies_to_use_classes: [data_center_hyperscale, data_center_colocation]
+    restrictions:
+      cutoff_date: "2025-02-12"
+      exempts_from_special_exception: true
+    notes: >-
+      Adopted the same day as the ordinance amendment and by a narrow margin, which is why it is
+      a separate row. It is the clearest example in the corpus of a rule whose expiry is itself
+      a forecastable event: supervisors moved in 2026 to terminate it immediately, which would
+      pull roughly ten million square feet of pipeline back into the discretionary process. Any
+      score for a grandfathered site has to price that.
+    citations:
+      - url: https://virginiabusiness.com/loudoun-supervisors-propose-terminating-data-centers-grandfather-provisions/
+        document_title: "Loudoun supervisors propose terminating grandfather provisions for data centers"
+        quote: "When Loudoun County supervisors eliminated data centers as a by-right use in March 2025, they narrowly voted to grandfather applications already in the pipeline."
+        retrieved_on: 2026-08-27
+        kind: secondary
+      - url: https://www.loudoun.gov/6221/Phase-1-Project-Plan-for-Data-Center-Sta
+        document_title: "Phase 1: Project Plan for Data Center Standards and Locations"
+        quote: "The Board also adopted a Grandfathering Resolution. This resolution outlines rules under which certain data center applications accepted prior to February 12, 2025, may continue to be reviewed and processed without obtaining SPEX approval for a data center use."
+        retrieved_on: 2026-08-27
+        kind: primary
+
+  - label_id: loudoun-phase2-project-plan-2025
+    jurisdiction: us-va-loudoun
+    labelled_by: Auspice
+    labelled_on: 2026-08-27
+    kind: resolution
+    body: board_of_supervisors
+    citation_ref: "Data Center Standards and Locations Phase 2 Project Plan"
+    title: Phase 2 project plan for data centre standards and locations
+    adopted_on: 2025-09-16
+    effective_on: 2025-09-16
+    applies_to_use_classes: [data_center_hyperscale, data_center_colocation]
+    restrictions:
+      process_stage: "standards development"
+    notes: >-
+      A work programme rather than a restriction, and it is in the corpus because a jurisdiction
+      that has an open standards process is measurably more likely to change its rules again
+      inside the next twelve months. That is a feature for the rule change hazard model, not a
+      restriction for the approval model.
+    citations:
+      - url: https://www.loudoun.gov/6222/Phase-2-Data-Center-Standards-Locations
+        document_title: "Phase 2: Data Center Standards and Locations"
+        quote: "On September 16, 2025, the Loudoun County Board of Supervisors approved the Data Center Standards and Locations Phase 2 Project Plan."
+        retrieved_on: 2026-08-27
+        kind: primary
+
+  - label_id: boone-data-center-moratorium-2026
+    jurisdiction: us-in-boone
+    labelled_by: Auspice
+    labelled_on: 2026-08-27
+    kind: moratorium
+    body: county_commission
+    title: One year moratorium on new data centre development in unincorporated Boone County
+    adopted_on: 2026-06-15
+    effective_on: 2026-06-15
+    expires_on: 2027-06-15
+    applies_to_use_classes: [data_center_hyperscale, data_center_colocation, data_center_edge]
+    vote_for: 3
+    vote_against: 0
+    restrictions:
+      applies_to_unincorporated_only: true
+      stops_acceptance: true
+      stops_processing: true
+      stops_approval: true
+    notes: >-
+      Unanimous, and preceded by a 6-0 favourable recommendation from the Area Plan Commission on
+      6 May 2026. Two things make this row valuable. The moratorium has a dated expiry, which
+      turns a hard no into a dated no, and the county had previously commissioned a paid single
+      site data centre certification study, which is direct evidence that this exact analysis has
+      a market price.
+    citations:
+      - url: https://boonecounty.in.gov/wp-content/uploads/2026/05/APC-Letter-Moratorium.pdf
+        document_title: "Boone County Area Plan Commission letter recommending a development moratorium"
+        quote: "On May 6, 2026 the APC, as part of their regular meeting, voted unanimously 6-0 to request the Board of Commissioners adopt a development moratorium on new data center facilities in unincorporated Boone County for a period of one (1) year."
+        retrieved_on: 2026-08-27
+        kind: primary
+      - url: https://www.reporter.net/news/boone-county-enacts-data-center-moratorium/article_39254dd5-7b45-4621-8c66-5d1ec6ca8e79.html
+        document_title: "Boone County enacts data center moratorium"
+        quote: "The Boone Area Plan Commission gave commissioners a favorable recommendation for the moratorium. Commissioner Don Lawson made the motion, and Commissioners Scott Pell and Tim Beyer supported it."
+        retrieved_on: 2026-08-27
+        kind: secondary
+      - url: https://youarecurrent.com/2026/06/15/boone-county-installs-one-year-data-center-moratorium/
+        document_title: "Boone County installs one-year data center moratorium"
+        quote: "The Boone County Commissioners unanimously approved a one-year moratorium on data centers June 15."
+        retrieved_on: 2026-08-27
+        kind: secondary
+
+  - label_id: sarasota-hyperscale-moratorium-2026
+    jurisdiction: us-fl-sarasota
+    labelled_by: Auspice
+    labelled_on: 2026-08-27
+    kind: moratorium
+    body: county_commission
+    title: Moratorium on acceptance, review and approval of major data centres
+    adopted_on: 2026-07-08
+    effective_on: 2026-07-08
+    expires_on: 2027-07-08
+    applies_to_use_classes: [data_center_hyperscale]
+    restrictions:
+      stops_acceptance: true
+      stops_review: true
+      stops_approval: true
+      scope: "major or hyperscale facilities"
+    notes: >-
+      Adopted with no data centre applications pending, which is the pre-emptive case and the
+      hardest one for a model built only on decision history. There are no decisions to learn
+      from here, so a flat model would score this county on the state average and be badly wrong.
+      This is precisely the row that justifies the rule change hazard model existing separately
+      from the approval model.
+    citations:
+      - url: https://www.mysuncoast.com/2026/07/09/sarasota-county-blocks-hyperscale-data-centers-least-one-year/
+        document_title: "Sarasota County blocks hyperscale data centers for at least one year"
+        quote: "Commissioners voted on Wednesday to halt the \u201cacceptance, review and approval\u201d of any major data centers until at least July 2027, but seemed eager to push for an outright ban in perpetuity."
+        retrieved_on: 2026-08-27
+        kind: secondary
+      - url: https://wslr.org/county-commission-puts-freeze-on-data-center-projects/
+        document_title: "County Commission puts freeze on data center projects"
+        quote: "On Wednesday, Sarasota joined the fast-growing ranks of Florida counties slamming the brakes on data centers."
+        retrieved_on: 2026-08-27
+        kind: secondary
+
+  - label_id: newton-data-center-moratorium-2026
+    jurisdiction: us-ga-newton
+    labelled_by: Auspice
+    labelled_on: 2026-08-27
+    kind: moratorium
+    body: county_commission
+    citation_ref: "Resolution R-040726b"
+    title: Temporary moratorium on data centre applications
+    adopted_on: 2026-04-07
+    effective_on: 2026-04-07
+    applies_to_use_classes: [data_center_hyperscale, data_center_colocation]
+    restrictions:
+      instrument: "Resolution R-040726b"
+      concurrent_moratorium: "convenience stores"
+    notes: >-
+      Two moratoria adopted in the same session, one for data centres and one for convenience
+      stores. The pairing matters: it is evidence the board was reaching for a general pause on
+      contested land use rather than reacting to one project, which generalises differently.
+    citations:
+      - url: https://www.wsbtv.com/news/local/newton-county/newton-county-commissioners-approve-2-moratoriums-data-centers-convenience-stores/IF5PU4677VDLLHWXWN6VD4XRME/
+        document_title: "Newton County commissioners approve 2 moratoriums for data centers, convenience stores"
+        quote: "At a recent board meeting, Newton County commissioners voted to enact two different moratoriums for the next 30 days."
+        retrieved_on: 2026-08-27
+        kind: secondary
+      - url: https://www.newtoncountyga.gov/DocumentCenter/View/7830/Resolution-R-040726b
+        document_title: "Newton County Resolution R-040726b"
+        quote: "Newton County commissioners approve 2 moratoriums for data centers, convenience stores"
+        retrieved_on: 2026-08-27
+        kind: secondary
+
+  - label_id: linn-data-center-moratorium-2026
+    jurisdiction: us-ia-linn
+    labelled_by: Auspice
+    labelled_on: 2026-08-27
+    kind: moratorium
+    body: board_of_supervisors
+    title: Moratorium on data centre development in unincorporated Linn County
+    adopted_on: 2026-04-08
+    effective_on: 2026-04-08
+    applies_to_use_classes: [data_center_hyperscale, data_center_colocation]
+    restrictions:
+      applies_to_unincorporated_only: true
+    notes: >-
+      Adopted by a three seat board that is publicly debating expanding to five, with the
+      moratorium vote named as the reason. That is a rare natural experiment: the same electorate,
+      the same use class, and a change in the number of people who have to agree.
+    citations:
+      - url: https://www.linncountyiowa.gov/m/newsflash/Home/Detail/4487
+        document_title: "Linn County newsflash on the data centre moratorium"
+        quote: "Linn County Board of Supervisors data center moratorium."
+        retrieved_on: 2026-08-27
+        kind: primary
+      - url: https://cbs2iowa.com/news/local/supervisors-clash-over-returning-to-5-seat-linn-county-board-after-moratorium-vote
+        document_title: "Supervisors clash over returning to 5-seat Linn County board after moratorium vote"
+        quote: "I think the push from five to three is related to the data center moratorium."
+        retrieved_on: 2026-08-27
+        kind: secondary
+      - url: https://cbs2iowa.com/news/local/supervisors-clash-over-returning-to-5-seat-linn-county-board-after-moratorium-vote
+        document_title: "Supervisors clash over returning to 5-seat Linn County board after moratorium vote"
+        quote: "Supervisors clash over returning to 5-seat Linn County board after moratorium vote"
+        retrieved_on: 2026-08-27
+        kind: secondary
+
+  - label_id: cheyenne-data-center-moratorium-rejected-2026
+    jurisdiction: us-wy-laramie
+    labelled_by: Auspice
+    labelled_on: 2026-08-27
+    kind: moratorium
+    body: city_council
+    title: Proposed twelve month data centre moratorium, rejected on second reading
+    proposed_but_not_adopted: true
+    effective_on: 2026-05-26
+    applies_to_use_classes: [data_center_hyperscale, data_center_colocation]
+    vote_for: 1
+    vote_against: 8
+    notes: >-
+      The negative case, and the corpus needs it more than it needs another moratorium. A model
+      trained only on jurisdictions that restricted the use class will over predict restriction
+      everywhere, and that error is invisible until it costs a customer a site they could have
+      built on. Defeated eight to one on second reading, with only the sponsor in favour, after
+      public comment ran to 27 speakers for and 25 against. That margin matters: a restriction that
+      fails one to eight is not a near miss, and a jurisdiction that rejects a moratorium this
+      decisively should not be scored like one that adopted one. Recorded against Laramie County
+      because Cheyenne sits inside it; the council is a municipal body and the registry does not
+      yet carry the city as its own jurisdiction, which is a known gap noted in
+      docs/DATA_SOURCES.md.
+    citations:
+      - url: https://capcity.news/community/city/2026/05/27/cheyenne-city-council-rejects-data-center-moratorium/
+        document_title: "Cheyenne City Council rejects data center moratorium"
+        quote: "The Cheyenne City Council overwhelmingly rejected a proposed 12-month moratorium on new data center developments, defeating the ordinance 8\u20131 after an hours-long debate over local resources, economic growth, jobs and the loss of Wyoming\u2019s rural nature."
+        retrieved_on: 2026-08-27
+        kind: secondary
+      - url: https://capcity.news/community/city/2026/05/27/cheyenne-city-council-rejects-data-center-moratorium/
+        document_title: "Cheyenne City Council rejects data center moratorium"
+        quote: "The ordinance, which would have temporarily stopped the processing of permits and zoning changes for new data center facilities, was shot down on second reading with only the measure\u2019s sponsor, Councilor Mark Moody, voting in favor."
+        retrieved_on: 2026-08-27
+        kind: primary
