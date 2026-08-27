@@ -109,10 +109,23 @@ uv run auspice labels load
 # The honest test. Trains on everything before the cutoff, predicts what follows.
 uv run auspice eval kill-test
 
+# Score a site. Returns an abstention when the evidence is too thin, which is an answer.
+uv run auspice features build
+uv run auspice train all
+uv run auspice score site --jurisdiction us-va-loudoun --acres 412 --capacity-mw 300
+
+# Publish it to the append only ledger, then render the committee memo.
+uv run auspice score site --jurisdiction us-va-loudoun --publish
+uv run auspice memo render <public-id>
+uv run auspice ledger verify
+
 # Interfaces
 uv run uvicorn app.main:app --app-dir apps/api --reload
 npm --prefix apps/web run dev
 ```
+
+Publishing is behind a flag rather than the default. A ledger entry cannot be revised or deleted,
+so committing one should be something an operator did on purpose.
 
 ## The test that decides everything
 
@@ -126,6 +139,29 @@ calibration error under 0.08, and 80 percent interval coverage between 0.76 and 
 The command refuses to report a verdict on fewer than 400 labelled decisions or fewer than
 60 held out decisions. It prints `INSUFFICIENT DATA` instead. A verdict computed on a
 sample too small to support it is worse than no verdict, because someone will quote it.
+
+## What this does not do yet
+
+The corpus is the product and the corpus is small. Stated plainly, because the number of ways
+to imply otherwise is large:
+
+- **The kill test has no verdict.** It needs 400 labelled decisions and holds 1. It prints
+  `INSUFFICIENT DATA` and names the four things blocking it. Every claim about calibration in
+  `docs/METHODOLOGY.md` is a claim about the method, not a measured result.
+- **Every site abstains.** With one outcome class in the training data, no probability from it is
+  defensible, so the scorer refuses. That is the system working, and it is also not yet a product.
+- **Extraction is unproven end to end.** The schema, the quote verifier and the golden fixtures all
+  run, and no language model has read a document, because that needs a key. `tests/golden/` is what
+  will measure accuracy the day one is configured.
+- **Several features report unknown rather than a value.** Board composition needs per member vote
+  records. Setback and distance need parcel geometry. Neither is loaded, so those columns are absent
+  rather than zero.
+- **Transcription is not run at scale.** The pipeline works on a file. No hearing audio has been
+  ingested in volume.
+
+The mechanisms are built and tested. What is missing is data, and the order matters: the
+specification says data and labels first, then the model, then the interface, and the reason to
+follow it is that a screen built on an unmeasured model is a screen that lies confidently.
 
 ## Writing and design
 
