@@ -75,6 +75,15 @@ const NAV = [
   { href: "/neutrality", label: "Neutrality" },
 ];
 
+/** Rendered from `docs/`, so the published claim and the enforced one cannot come apart. */
+const FOOTER_LINKS = [
+  { href: "/method", label: "Method" },
+  { href: "/neutrality", label: "Neutrality" },
+  { href: "/data-sources", label: "Data sources" },
+  { href: "/terms", label: "Terms of use" },
+  { href: "/privacy", label: "Privacy" },
+];
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
@@ -165,6 +174,29 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 The same data is available to developers, lenders, insurers, counties and community
                 groups. The last two at no cost.
               </p>
+
+              {/*
+                The legal surfaces, in the footer rather than the header, because they are things a reader
+                should be able to find rather than things the product is about. Each is rendered from a file
+                in docs/, so what is published and what the build enforces cannot come apart.
+              */}
+              <nav aria-label="Legal and method" className="mt-6 flex flex-wrap gap-x-6 gap-y-2">
+                {FOOTER_LINKS.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="font-mono uppercase"
+                    style={{
+                      fontSize: "var(--text-micro)",
+                      letterSpacing: "0.12em",
+                      color: "var(--text-tertiary)",
+                      textDecoration: "none",
+                    }}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </nav>
             </div>
           </footer>
         </ThemeProvider>

@@ -1,0 +1,19 @@
+Copyright 2026 Auspice. All rights reserved.
+
+This software is not licensed for redistribution.
+
+No permission is granted to copy, modify, merge, publish, distribute, sublicense or sell copies of this
+software or its data, in whole or in part, except as expressly agreed in writing.
+
+The method is published and may be read, cited and criticised: see docs/METHODOLOGY.md. That is deliberate,
+because a rating bureau whose method cannot be examined is asking to be trusted rather than checked. The
+corpus, the labels and the prediction ledger are the asset and are not covered by that permission.
+
+Third party dependencies are covered by their own licences, which are recorded in the lock files at the
+repository root and under apps/web. Nothing here changes them.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
+LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO
+EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+USE OR OTHER DEALINGS IN THE SOFTWARE.

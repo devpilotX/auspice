@@ -21,7 +21,7 @@ import {
 } from "../../src/lib/published-doc";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..", "..");
-const PUBLISHED = ["METHODOLOGY.md", "NEUTRALITY.md", "DATA_SOURCES.md"];
+const PUBLISHED = ["METHODOLOGY.md", "NEUTRALITY.md", "DATA_SOURCES.md", "TERMS.md", "PRIVACY.md"];
 
 function read(name: string): string {
   return readFileSync(path.join(REPO_ROOT, "docs", name), "utf8");

@@ -40,6 +40,18 @@ export const DOCUMENTS = {
     description:
       "Every source Auspice reads, how often it is fetched, and what happens when a source goes dark.",
   },
+  terms: {
+    file: "TERMS.md",
+    label: "terms of use",
+    description:
+      "What Auspice sells, what a probability does and does not mean, and what it will not stand behind.",
+  },
+  privacy: {
+    file: "PRIVACY.md",
+    label: "privacy",
+    description:
+      "What the site collects, what the API receives, what is kept, and what a published score makes public.",
+  },
 } as const;
 
 export type PublishedSlug = keyof typeof DOCUMENTS;

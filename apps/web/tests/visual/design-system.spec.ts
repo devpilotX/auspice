@@ -23,8 +23,15 @@ test.describe("the two screens that must never silently break", () => {
 
   test("the coverage table", async ({ page }) => {
     await page.goto("/jurisdictions");
-    await expect(page.getByRole("table")).toBeVisible();
-    await expect(page).toHaveScreenshot("coverage.png", { fullPage: true });
+    await expect(page.getByRole("table").first()).toBeVisible();
+    // The map is masked. It is a WebGL canvas that paints when its tiles arrive, so including it would make
+    // this a test of tile timing rather than of the table, and it flaked in dark mode for exactly that
+    // reason. The map has its own tests, which check that tiles are fetched and decoded rather than that
+    // pixels match.
+    await expect(page).toHaveScreenshot("coverage.png", {
+      fullPage: true,
+      mask: [page.locator("canvas.maplibregl-canvas"), page.locator(".maplibregl-ctrl-group")],
+    });
   });
 
   test("a jurisdiction profile", async ({ page }) => {
