@@ -90,6 +90,19 @@ Not in the specification. Added because a flagged number still gets pasted into 
 without the flag, and at three months the ordinance the score assumed may no longer exist.
 """
 
+MIN_OUTCOME_CLASSES: Final = 2
+"""A model trained on fewer distinct outcomes than this cannot state a probability.
+
+Not in the specification. Added after the scorer, run against the real corpus while it held one
+approval and nothing else, reported a 100 percent chance of approval. The shrinkage arithmetic was
+correct: the prior it shrank toward was itself 1.0, because it was computed from the same single row.
+The three thin record conditions did not catch it because the pooling weight came to exactly 0.8,
+which is not greater than 0.8.
+
+Lowering this to 1 would let a model that has only ever seen approvals publish certainties. There is
+no legitimate reason to change it.
+"""
+
 __all__ = [
     "ABSTAIN_MAX_COMPARABLES",
     "ABSTAIN_MAX_INTERVAL_WIDTH",
@@ -104,6 +117,7 @@ __all__ = [
     "MIN_HELD_OUT_DECISIONS",
     "MIN_JURISDICTIONS_WITH_DEPTH",
     "MIN_LABELLED_DECISIONS",
+    "MIN_OUTCOME_CLASSES",
     "STALENESS_ABSTAIN_DAYS",
     "STALENESS_FLAG_DAYS",
     "TARGET_BRIER_SKILL",

@@ -1,0 +1,113 @@
+{
+  "_fixture": {
+    "document": "arden-staff-report-2026-04-08.html",
+    "document_kind": "staff_report",
+    "jurisdiction": "fixture county, Virginia",
+    "published_on": "2026-04-08",
+    "use_classes_of_interest": ["data_center_hyperscale"],
+    "checked_by": "Auspice",
+    "checked_on": "2026-08-27",
+    "note": [
+      "A constructed fixture. What it copies from reality is the shape of a civic platform's HTML: substance",
+      "in a table, a hyperlink in the middle of a sentence, and curly punctuation from a word processor.",
+      "",
+      "The hyperlink is the point. Text extraction inserts a separator at every inline element boundary, so",
+      "the sentence containing it comes out with a space before the following comma. A quote spanning that",
+      "boundary verifies only because whitespace before punctuation is treated as markup rather than content.",
+      "That rule was added after real citations failed on it, and this fixture is what stops it regressing."
+    ]
+  },
+
+  "expected_decisions": [
+    {
+      "_why_this_row_is_hard": [
+        "A staff report is not a decision. The outcome is pending, the row is censored, and decided_on is",
+        "null, even though the document contains the word denial in bold. What the document records is a",
+        "recommendation, and staff_recommendation is where it goes.",
+        "The relief is a special use permit on a parcel already zoned for the use, which is the discretionary",
+        "case: every technical standard is met and the body may still refuse. by_right is false.",
+        "A filing date and a hearing date are both present and are different fields."
+      ],
+      "event_type": "staff_report_issued",
+      "body": "staff",
+      "case_number": "SUP-2026-0022",
+      "applicant": "Cinder Lake Compute LLC",
+      "project_name": null,
+      "use_class": "data_center_hyperscale",
+      "relief_sought": ["special_use_permit"],
+      "filed_on": "2026-02-11",
+      "decided_on": null,
+      "outcome": "pending",
+      "vote": null,
+      "staff_recommendation": "deny",
+      "conditions": [
+        "Relocation of the buildable area to achieve the 2,000 foot setback.",
+        "A groundwater impact study prepared by a licensed hydrogeologist, filed before site plan approval.",
+        "A noise study demonstrating compliance with 55 dBA at the property line."
+      ],
+      "objection_grounds": [],
+      "organised_opposition": null,
+      "speakers_against": null,
+      "acres": 188.0,
+      "capacity_mw": 180.0,
+      "confidence": 0.94,
+      "evidence": [
+        {
+          "page": 1,
+          "quote": "For the reasons above, staff recommends denial ."
+        },
+        {
+          "page": 1,
+          "quote": "The use is permitted in M-1 only by special use permit, so the Board may lawfully refuse it even where every dimensional standard is met."
+        }
+      ]
+    }
+  ],
+
+  "expected_instruments": [],
+
+  "expected_features_readable": {
+    "_why_this_matters": [
+      "These are the numbers the feature layer needs, and the reason extraction into a schema beats a summary.",
+      "A summary would say the site does not meet the setback. A structured extraction says it is short by 550",
+      "feet, which is a continuous value the model can use and a memo can quote."
+    ],
+    "setback_required_ft": 2000.0,
+    "setback_actual_ft": 1450.0,
+    "setback_compliance_margin_ft": -550.0,
+    "by_right": false,
+    "denial_streak_stated_in_document": 3,
+    "comparable_window_stated_in_document": 4,
+    "evidence": [
+      {
+        "page": 1,
+        "quote": "the parcel lies 1,450 feet from the nearest residentially zoned property, which is 550 feet short of the 2,000 foot setback established by the Data Centre Overlay District , adopted 14 September 2025."
+      },
+      {
+        "page": 1,
+        "quote": "the county has denied three of the last four applications of this type"
+      }
+    ],
+    "note": [
+      "The first quote is the one that spans a hyperlink. In the extracted text there is a space before the",
+      "comma after District, because that is where the anchor closed. The quote is written here without the",
+      "space, the way a person transcribing it would, and it verifies because whitespace before punctuation",
+      "is normalised on both sides."
+    ]
+  },
+
+  "must_not_extract": [
+    {
+      "why": "The word denial in bold is a recommendation, not an outcome. Recording it as a denial puts a decision in the record on a date no decision was made, and the body may still approve.",
+      "shape": {"outcome": "denied", "decided_on": "2026-04-08"}
+    },
+    {
+      "why": "The conditions are offered only if the Board is inclined to approve. They are not conditions of an approval that happened.",
+      "shape": {"outcome": "approved_with_conditions"}
+    },
+    {
+      "why": "The overlay district is referenced, not adopted here. It was adopted in a different document on a different date, and extracting it again would create a duplicate instrument with the wrong source.",
+      "shape": {"kind": "overlay_district", "adopted_on": "2026-04-08"}
+    }
+  ]
+}

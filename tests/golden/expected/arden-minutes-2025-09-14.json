@@ -1,0 +1,216 @@
+{
+  "_fixture": {
+    "document": "arden-minutes-2025-09-14.txt",
+    "document_kind": "minutes",
+    "jurisdiction": "fixture county, Virginia",
+    "published_on": "2025-09-14",
+    "use_classes_of_interest": ["data_center_hyperscale", "solar_utility", "warehouse_logistics"],
+    "checked_by": "Auspice",
+    "checked_on": "2026-08-27",
+    "note": [
+      "A constructed fixture, not a real county record. The place, the parties and the case numbers are",
+      "invented. What is copied from reality is the structure: the order of a minute, the way a staff",
+      "recommendation is recorded separately from the body's own vote, the fact that a tally can run in",
+      "either direction depending on how the motion was framed, and the fact that a continuance is not a",
+      "decision. Those are the things extraction gets wrong, so those are what a fixture has to contain.",
+      "",
+      "Every quote below is verbatim from the document, which is what the regression suite verifies. If a",
+      "quote here stops matching, either the fixture changed or the normalisation did, and both should fail",
+      "a build."
+    ]
+  },
+
+  "expected_decisions": [
+    {
+      "_why_this_row_is_hard": [
+        "The motion was to approve and it failed, so the outcome is a denial while the tally reads 2 to 4",
+        "in the direction of the motion. An extractor that records the tally without reading the verb",
+        "produces an approval on a 2 to 4 vote, which is the single most damaging error in the corpus.",
+        "Staff recommended approval and the body denied, so staff_recommendation and outcome disagree.",
+        "That disagreement is the signal, not a contradiction to be smoothed over.",
+        "Two case numbers, one decision. The relief is a rezoning and a special use permit together."
+      ],
+      "event_type": "decision_rendered",
+      "body": "board_of_supervisors",
+      "case_number": "REZ-2025-0114",
+      "applicant": "Ridgeline Digital Holdings LLC",
+      "project_name": null,
+      "use_class": "data_center_hyperscale",
+      "relief_sought": ["rezoning", "special_use_permit"],
+      "filed_on": null,
+      "decided_on": "2025-09-14",
+      "outcome": "denied",
+      "vote": "4-2",
+      "staff_recommendation": "approve_with_conditions",
+      "conditions": [],
+      "objection_grounds": ["water", "noise", "property_value"],
+      "organised_opposition": true,
+      "speakers_against": 33,
+      "acres": 412.0,
+      "capacity_mw": 300.0,
+      "confidence": 0.95,
+      "evidence": [
+        {
+          "page": 1,
+          "quote": "The motion failed on a vote of 2 to 4, with\nSupervisor Nakamura absent."
+        },
+        {
+          "page": 1,
+          "quote": "Staff recommended approval with\nconditions"
+        },
+        {
+          "page": 1,
+          "quote": "The Planning Commission recommended denial by a vote of 5 to 2 on 20 August 2025."
+        }
+      ]
+    },
+    {
+      "_why_this_row_is_hard": [
+        "A unanimous vote with no numbers. Section 6.4 forbids converting the word unanimous into a tally,",
+        "because the number of seats voting is not stated and a six seat board with one absence is not 6-0.",
+        "The vote must be null."
+      ],
+      "event_type": "decision_rendered",
+      "body": "board_of_supervisors",
+      "case_number": "REZ-2025-0098",
+      "applicant": "Talbot Warehouse Partners LP",
+      "project_name": null,
+      "use_class": "warehouse_logistics",
+      "relief_sought": ["rezoning"],
+      "filed_on": null,
+      "decided_on": "2025-09-14",
+      "outcome": "approved",
+      "vote": null,
+      "staff_recommendation": "approve",
+      "conditions": [],
+      "objection_grounds": [],
+      "organised_opposition": false,
+      "speakers_against": 0,
+      "acres": 61.0,
+      "capacity_mw": null,
+      "confidence": 0.9,
+      "evidence": [
+        {
+          "page": 1,
+          "quote": "MOTION: Supervisor Ramirez moved to approve REZ-2025-0098. The motion carried\nunanimously."
+        }
+      ]
+    },
+    {
+      "_why_this_row_is_hard": [
+        "A continuance is not a decision. The outcome is continued, the row is censored, and decided_on is",
+        "null even though a vote was taken and carried 6 to 0. An extractor that reads carried as approved",
+        "turns a delay into an approval, and section 19.2 group B calls continuances the quiet killer of",
+        "timelines precisely because they look like progress."
+      ],
+      "event_type": "hearing_continued",
+      "body": "board_of_supervisors",
+      "case_number": "REZ-2024-0210",
+      "applicant": "Halloway Solar I LLC",
+      "project_name": null,
+      "use_class": "solar_utility",
+      "relief_sought": ["rezoning"],
+      "filed_on": null,
+      "decided_on": null,
+      "outcome": "continued",
+      "vote": null,
+      "staff_recommendation": null,
+      "conditions": [],
+      "objection_grounds": [],
+      "organised_opposition": null,
+      "speakers_against": null,
+      "acres": null,
+      "capacity_mw": null,
+      "confidence": 0.88,
+      "evidence": [
+        {
+          "page": 1,
+          "quote": "The applicant has requested a further continuance to the\nmeeting of 9 November 2025."
+        }
+      ]
+    }
+  ],
+
+  "expected_instruments": [
+    {
+      "_why_this_row_is_hard": [
+        "A county initiated ordinance amendment, not an application. It belongs in the instrument schema",
+        "rather than the decision schema, and an extractor that files it as an application invents a",
+        "denial or approval for a project that does not exist.",
+        "The restrictions are numbers buried in prose: 2,000 feet, 55 dBA, 250,000 gallons per day. Pulling",
+        "them out as structured values is what makes setback_compliance_margin computable at all.",
+        "Adopted 5 to 1, which is the durability signal for the rule change hazard model."
+      ],
+      "kind": "overlay_district",
+      "citation": "ZOA-2025-0007",
+      "title": "Data Centre Overlay District",
+      "adopted": true,
+      "adopted_on": "2025-09-14",
+      "effective_on": "2025-09-14",
+      "expires_on": null,
+      "vote": "5-1",
+      "applies_to_use_classes": ["data_center_hyperscale"],
+      "restrictions": {
+        "setback_ft": 2000.0,
+        "setback_from": "any residentially zoned parcel",
+        "noise_dba": 55.0,
+        "noise_measured_at": "the property line",
+        "water_gpd_cap": 250000.0
+      },
+      "confidence": 0.93,
+      "evidence": [
+        {
+          "page": 1,
+          "quote": "establish a\nData Centre Overlay District, imposing a minimum setback of 2,000 feet from any\nresidentially zoned parcel"
+        },
+        {
+          "page": 1,
+          "quote": "The motion\ncarried on a vote of 5 to 1, with Supervisor Nakamura absent."
+        }
+      ]
+    }
+  ],
+
+  "expected_objections": [
+    {
+      "grounds": ["water", "noise", "property_value"],
+      "organised": true,
+      "group_name_raw": "Arden Groundwater Alliance",
+      "retained_counsel": true,
+      "speakers": 41,
+      "evidence": [
+        {
+          "page": 1,
+          "quote": "The Arden Groundwater Alliance, represented by\ncounsel, submitted a petition bearing 1,240 signatures."
+        }
+      ]
+    }
+  ],
+
+  "expected_transcript_signal": {
+    "_why_this_matters": [
+      "This is the sentence section 6.3 is about. The minute records that a motion failed; this records why,",
+      "and the why generalises to the next four decisions in the county. It is in the minutes here because",
+      "the fixture is a minute, but in practice it comes from the recording and is the reason transcription",
+      "is worth its cost."
+    ],
+    "quote": "Supervisor Alvarez stated that she could not support the application until the\ncounty understood what it would do to the aquifer, and noted that she had been\nasking the same question for six months.",
+    "ground": "water",
+    "attribution": "a named supervisor, recorded as an aggregate objection ground and never as a prediction about her"
+  },
+
+  "must_not_extract": [
+    {
+      "why": "The Planning Commission's 5 to 2 recommendation is not a decision by the deciding body. Recording it as one would double count a single application and put a denial in the record on a date no denial occurred.",
+      "shape": {"body": "planning_commission", "outcome": "denied", "decided_on": "2025-08-20"}
+    },
+    {
+      "why": "The petition signature count is not a speaker count and not a vote. It is a measure of organised opposition and belongs in the objection row.",
+      "shape": {"vote": "1240-0"}
+    },
+    {
+      "why": "Item 7 carried 6 to 0, but the motion was to continue. Reading the tally as an outcome converts a delay into an approval.",
+      "shape": {"case_number": "REZ-2024-0210", "outcome": "approved", "vote": "6-0"}
+    }
+  ]
+}

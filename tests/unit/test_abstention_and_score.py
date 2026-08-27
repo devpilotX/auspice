@@ -78,6 +78,119 @@ class TestAbstentionRule:
         )
         assert not decide(relaxed).abstained
 
+
+class TestDegenerateTrainingCorpus:
+    """The bug this class exists for.
+
+    Run against the real corpus while it held one approval and nothing else, the scorer reported a 100
+    percent chance of approval for a neighbouring county. The shrinkage was arithmetically correct: the
+    prior it shrank toward was computed from the same single row, so every level agreed at 1.0. The three
+    thin record conditions did not catch it because the base rate's pooling weight came to exactly
+    4/(4+1), and 0.8 is not greater than 0.8.
+
+    The primary site abstained and the alternative did not, which is the part that made it a real defect
+    rather than a rough edge. An abstention that leaks a number through a side channel has not abstained.
+    """
+
+    def test_a_single_outcome_class_abstains_on_its_own(self) -> None:
+        """No thin record condition needs to hold. Deep local data does not rescue it."""
+        decision = decide(
+            AbstentionInput(
+                n_comparable_decisions=500,
+                pooling_weight=0.0,
+                interval_width=0.01,
+                staleness_days=0,
+                outcome_classes_in_training=1,
+            )
+        )
+        assert decision.abstained
+        assert decision.reasons == [AbstentionReason.degenerate_training_corpus]
+
+    def test_the_exact_boundary_that_leaked(self) -> None:
+        """The precise inputs from the failure, asserted as a regression."""
+        leaked = AbstentionInput(
+            n_comparable_decisions=1,
+            pooling_weight=0.8,
+            interval_width=0.5773502691896258,
+            staleness_days=0,
+        )
+        assert not decide(leaked).abstained, (
+            "the thin record rule genuinely does not fire here, which is why a separate condition "
+            "was needed rather than a tighter threshold"
+        )
+
+        with_knowledge = AbstentionInput(
+            n_comparable_decisions=1,
+            pooling_weight=0.8,
+            interval_width=0.5773502691896258,
+            staleness_days=0,
+            outcome_classes_in_training=1,
+        )
+        assert decide(with_knowledge).abstained
+
+    def test_two_classes_does_not_abstain_on_this_ground(self) -> None:
+        decision = decide(
+            AbstentionInput(
+                n_comparable_decisions=40,
+                pooling_weight=0.2,
+                interval_width=0.15,
+                staleness_days=1,
+                outcome_classes_in_training=2,
+            )
+        )
+        assert not decision.abstained
+
+    def test_not_supplied_leaves_the_rule_unchanged(self) -> None:
+        """Defaulting to None rather than to a passing value keeps old callers honest.
+
+        A caller that has not been taught about outcome classes gets the section 8.4 rule exactly, and
+        the two production call sites are asserted separately below.
+        """
+        assert decide(_thin()).abstained
+        assert AbstentionReason.degenerate_training_corpus not in decide(_thin()).reasons
+
+    def test_zero_classes_abstains(self) -> None:
+        """An empty training set is the same problem in its most extreme form."""
+        assert decide(
+            AbstentionInput(
+                n_comparable_decisions=0,
+                pooling_weight=1.0,
+                interval_width=1.0,
+                staleness_days=None,
+                outcome_classes_in_training=0,
+            )
+        ).abstained
+
+    def test_the_threshold_cannot_be_relaxed_quietly(self) -> None:
+        from auspice.models.eval.thresholds import MIN_OUTCOME_CLASSES
+
+        assert MIN_OUTCOME_CLASSES == 2, (
+            "one outcome class means the model has never observed a denial. Lowering this lets it "
+            "publish certainties."
+        )
+
+    def test_both_engine_call_sites_pass_the_outcome_count(self) -> None:
+        """Read the source, because a missed call site is exactly how the leak happened.
+
+        The primary path abstained correctly while the alternatives path did not. Asserting on the text
+        catches a third call site added later without the argument, which a behavioural test on the two
+        known paths would not.
+        """
+        import re
+        from pathlib import Path
+
+        from auspice.score import engine
+
+        source = Path(engine.__file__).read_text(encoding="utf-8")
+        constructions = re.findall(r"AbstentionInput\((.*?)\n    {4,8}\)", source, re.DOTALL)
+        assert len(constructions) >= 2, "expected the primary and the alternatives call sites"
+
+        scoring_sites = [c for c in constructions if "models.outcome_classes" in c]
+        assert len(scoring_sites) == 2, (
+            "every path that turns a model into a probability must pass outcome_classes_in_training. "
+            f"Found {len(scoring_sites)} of {len(constructions)} constructions carrying it."
+        )
+
     def test_deep_record_answers(self) -> None:
         decision = decide(
             AbstentionInput(

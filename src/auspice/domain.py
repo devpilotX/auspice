@@ -281,6 +281,7 @@ class AbstentionReason(StrEnum):
     interval_too_wide = "interval_too_wide"
     stale_jurisdiction_data = "stale_jurisdiction_data"
     unresolved_jurisdiction_chain = "unresolved_jurisdiction_chain"
+    degenerate_training_corpus = "degenerate_training_corpus"
 
 
 class AlertTrigger(StrEnum):

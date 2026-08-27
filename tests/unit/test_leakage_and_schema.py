@@ -303,6 +303,82 @@ class TestSchemaMatchesDatabase:
 
         assert_extensions(db)
 
+    def test_every_vocabulary_constraint_matches_its_enum(self, db: Connection) -> None:
+        """Alembic does not diff check constraints, so ``alembic check`` cannot see this drift.
+
+        Found the hard way. ``AbstentionReason`` gained a member, the constraint in
+        ``src/auspice/db/schema.py`` is generated from that enum, and ``alembic check`` reported nothing
+        pending while the live database would have rejected the insert. The failure would have surfaced
+        as an integrity error at publish time, which is the worst moment to discover it.
+
+        This compares the vocabulary the database actually enforces against the enum for every generated
+        subset constraint, so the next enum member is caught here instead of in production.
+        """
+        import re
+
+        from auspice import domain
+
+        enums = {
+            "abstention_reasons": domain.ABSTENTION_REASONS,
+            "relief_sought": domain.RELIEFS,
+            "objection_grounds": domain.OBJECTION_GROUNDS,
+        }
+
+        live = (
+            db.execute(
+                text(
+                    """
+                    SELECT conname, pg_get_constraintdef(oid) AS def
+                    FROM pg_constraint
+                    WHERE contype = 'c' AND conname LIKE '%_vocabulary'
+                    """
+                )
+            )
+            .mappings()
+            .all()
+        )
+        assert live, "no vocabulary constraints found, so this test is not checking anything"
+
+        checked = 0
+        for row in live:
+            column = next((name for name in enums if name in row["def"]), None)
+            if column is None:
+                continue
+            enforced = set(re.findall(r"'([^']+)'::text", row["def"]))
+            expected = set(enums[column])
+            assert enforced == expected, (
+                f"{row['conname']} enforces {sorted(enforced)} but the enum is {sorted(expected)}. "
+                "A migration is needed, and `alembic check` will not tell you so."
+            )
+            checked += 1
+
+        assert checked >= 1, "expected at least the abstention reasons constraint to be compared"
+
+    def test_the_new_abstention_reason_can_actually_be_stored(self, db: Connection) -> None:
+        """The end of the chain: would the database accept a row citing it?
+
+        Asserted against the live constraint rather than against the enum, because the enum is the thing
+        under suspicion. Uses the database's own subset operator, so it is the same test Postgres would
+        apply on insert.
+        """
+        definition = db.execute(
+            text(
+                "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+                "WHERE conname = 'ck_prediction_abstention_reasons_vocabulary'"
+            )
+        ).scalar_one_or_none()
+        assert definition is not None, "the vocabulary constraint is missing entirely"
+
+        condition = definition.removeprefix("CHECK ((").removesuffix("))")
+        # CAST rather than ``::text[]``, because a trailing ``::`` on a bind parameter is parsed as part
+        # of the parameter name and never binds. That gotcha is documented in docs/OPERATIONS.md.
+        accepted = db.execute(
+            text(
+                "SELECT " + condition.replace("abstention_reasons", "CAST(:candidate AS text[])")
+            ).bindparams(candidate=["degenerate_training_corpus"])
+        ).scalar_one()
+        assert accepted, "the database would reject a prediction citing degenerate_training_corpus"
+
     def test_the_generated_duration_column_is_generated(self, db: Connection) -> None:
         """If this becomes an ordinary column, someone can write a wrong duration by hand."""
         value = db.execute(

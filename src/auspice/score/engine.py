@@ -32,6 +32,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
 from auspice.domain import (
+    AbstentionReason,
     JurisdictionRole,
     ObjectionGround,
     Outcome,
@@ -118,6 +119,13 @@ class ServingModels:
     rule_change: dict[str, RuleChangeModel] | None = None
     trained_at: datetime | None = None
     notes: list[str] | None = None
+    outcome_classes: int = 0
+    """Distinct outcomes in the training set. Below two, no model here can state a probability.
+
+    Recorded on the object rather than recomputed by callers because the alternatives path needs the
+    same answer as the primary path, and a scorer that abstains for a site while quoting a confident
+    number for the county next door has not really abstained.
+    """
 
     @property
     def primary_kind(self) -> str:
@@ -152,6 +160,9 @@ def load_serving_models(
         base_rate=BaseRateModel().fit(train),
         trained_at=datetime.now(UTC),
         notes=notes,
+        outcome_classes=(
+            int(train.select("approved").to_series().n_unique()) if train.height else 0
+        ),
     )
 
     if train.height == 0:
@@ -748,6 +759,7 @@ def _predict_for_jurisdiction(
             staleness_days=_staleness_days(
                 conn, int(jurisdiction.get("id") or jurisdiction["jurisdiction_id"])
             ),
+            outcome_classes_in_training=models.outcome_classes,
         )
     )
     if decision.abstained:
@@ -832,6 +844,7 @@ def score_site(
             pooling_weight=pooling_weight,
             interval_width=interval[1] - interval[0],
             staleness_days=staleness,
+            outcome_classes_in_training=models.outcome_classes,
         )
     )
 
@@ -1037,15 +1050,44 @@ def _unresolved_score(request: SiteRequest, *, models: ServingModels, as_of: dat
 
 
 def abstention_notice(score: Score) -> str:
-    """The text shown in place of a number. Bordered, plain, unapologetic."""
-    if not score.determination.abstained:
+    """The text shown in place of a number. Bordered, plain, unapologetic.
+
+    Dispatches on the reason rather than always describing the thin record conditions, because telling
+    someone their county has too few comparables when the real problem is that our corpus contains one
+    kind of outcome would be a false explanation of a true refusal.
+    """
+    determination = score.determination
+    if not determination.abstained:
         return ""
+
+    reasons = set(determination.abstention_reasons)
+
+    if AbstentionReason.unresolved_jurisdiction_chain in reasons:
+        return (
+            "We cannot say who decides for this parcel. Until the jurisdiction chain resolves, any "
+            "probability would be a guess about the wrong body."
+        )
+
+    if AbstentionReason.degenerate_training_corpus in reasons:
+        return (
+            "Every decision we hold has the same outcome, so the model has never seen an application "
+            "go the other way. It cannot tell you the odds of something it has no example of. This is "
+            "a gap in our corpus, not a finding about your site."
+        )
+
+    if AbstentionReason.stale_jurisdiction_data in reasons:
+        days = score.provenance.staleness_days
+        return (
+            f"Our data for this jurisdiction is {days} days old. The rules may have changed since, "
+            "and a score computed on rules that no longer exist is worse than no score."
+        )
+
     head = score.site.jurisdiction_chain[0]
     return explain(
         AbstentionInput(
             n_comparable_decisions=head.data_depth,
             pooling_weight=score.provenance.pooling_weight,
-            interval_width=score.determination.interval_width or 1.0,
+            interval_width=determination.interval_width or 1.0,
             staleness_days=score.provenance.staleness_days,
         )
     )

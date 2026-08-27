@@ -8,7 +8,14 @@ from __future__ import annotations
 
 import typer
 
-from auspice.cli import labels_cmd, ledger_cmd, model_cmd, pipeline_cmd, registry_cmd
+from auspice.cli import (
+    labels_cmd,
+    ledger_cmd,
+    model_cmd,
+    pipeline_cmd,
+    registry_cmd,
+    score_cmd,
+)
 from auspice.cli.output import console, heading, note, render_table
 from auspice.config import get_settings
 
@@ -30,6 +37,8 @@ app.add_typer(pipeline_cmd.resolve_app, name="resolve")
 app.add_typer(model_cmd.features_app, name="features")
 app.add_typer(model_cmd.train_app, name="train")
 app.add_typer(model_cmd.eval_app, name="eval")
+app.add_typer(score_cmd.score_app, name="score")
+app.add_typer(score_cmd.memo_app, name="memo")
 app.add_typer(pipeline_cmd.monitor_app, name="monitor")
 app.add_typer(ledger_cmd.app, name="ledger")
 

@@ -20,6 +20,19 @@ score. This is an abstention rather than an error because "we cannot tell which 
 over this parcel" is a real and useful answer, and it is the honest one for a site outside the covered
 counties.
 
+**Degenerate training corpus.** If every decision the model trained on has the same outcome, the model
+has never seen the other kind of event and cannot assign a probability to it. Found by running the
+scorer against the real corpus while it held a single approval: every level of shrinkage agreed at
+1.0, because the prior being shrunk toward was itself 1.0, and the three thin record conditions did
+not fire because the pooling weight landed exactly on its threshold. The result was a published claim
+that a data centre had a 100 percent chance of approval, from one decision.
+
+This one deserves its own condition rather than a tighter threshold. A base rate of 1.0 means "always
+approves", which is the same unearned certainty as the base rate of 0.0 that section 7.7 forbids, and
+no amount of interval arithmetic makes it defensible. The fitting code already knew: it declines to
+fit a classifier on a single outcome class and says so. It then let the base rate answer anyway. This
+closes that gap.
+
 > A system that always answers is trusted exactly once.
 """
 
@@ -32,6 +45,7 @@ from auspice.models.eval.thresholds import (
     ABSTAIN_MAX_COMPARABLES,
     ABSTAIN_MAX_INTERVAL_WIDTH,
     ABSTAIN_MAX_POOLING_WEIGHT,
+    MIN_OUTCOME_CLASSES,
     STALENESS_ABSTAIN_DAYS,
     STALENESS_FLAG_DAYS,
 )
@@ -44,6 +58,12 @@ class AbstentionInput:
     interval_width: float
     staleness_days: int | None
     jurisdiction_resolved: bool = True
+    outcome_classes_in_training: int | None = None
+    """How many distinct outcomes the serving model was trained on. None when not known.
+
+    Below two, the model has only ever seen one kind of event. Defaults to None rather than to a
+    passing value so that a caller which forgets to supply it does not silently get the old behaviour.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +96,21 @@ def decide(inputs: AbstentionInput) -> AbstentionDecision:
         )
 
     stale_flag = inputs.staleness_days is not None and inputs.staleness_days > STALENESS_FLAG_DAYS
+
+    if (
+        inputs.outcome_classes_in_training is not None
+        and inputs.outcome_classes_in_training < MIN_OUTCOME_CLASSES
+    ):
+        return AbstentionDecision(
+            abstained=True,
+            reasons=[AbstentionReason.degenerate_training_corpus],
+            stale_flag=stale_flag,
+            explanation=(
+                "Every decision we hold has the same outcome, so the model has never seen an "
+                "application go the other way. It cannot tell you the odds of something it has no "
+                "example of. This is a gap in our corpus, not a finding about your site."
+            ),
+        )
 
     if inputs.staleness_days is not None and inputs.staleness_days > STALENESS_ABSTAIN_DAYS:
         return AbstentionDecision(
