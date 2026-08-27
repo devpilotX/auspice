@@ -203,6 +203,14 @@ module = [
     "selectolax.*",
     "feedparser.*",
     "slowapi.*",
+    # These ship no type information. Every call into them is at a module boundary that
+    # converts to a typed value immediately, and the conversion is where the checking happens.
+    "boto3.*",
+    "botocore.*",
+    "shapely.*",
+    # Optional. Installed with the memo extra, absent in a default sync.
+    "playwright.*",
+    "pgvector.*",
 ]
 ignore_missing_imports = true
 

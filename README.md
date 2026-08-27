@@ -130,9 +130,10 @@ sample too small to support it is worse than no verdict, because someone will qu
 ## Writing and design
 
 Interface copy, documentation, commit messages and memo text follow one rule above the
-rest: they read as though a person wrote them, because a person did. No em dashes. No
-"seamless", "robust", "leverage" as a verb, or "unlock". When the model does not know, the
-copy says we do not know.
+rest: they read as though a person wrote them, because a person did. No em dashes. None
+of the vocabulary that gives machine writing away, and `tools/check_writing.py` enforces
+the mechanical part of that in CI. When the model does not know, the copy says we do not
+know.
 
 The design system is a document that happens to be interactive. Two pixel radius, no
 shadows anywhere, hairlines for all separation, one chromatic colour. Probability is never

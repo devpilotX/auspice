@@ -25,6 +25,7 @@ import re
 import unicodedata
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
+from typing import Any
 
 from auspice.domain import ParseMethod
 from auspice.errors import IllegibleDocumentError
@@ -108,33 +109,30 @@ def normalise_text(raw: str) -> str:
     verification pass on text that does not actually say the same thing.
     """
     text = unicodedata.normalize("NFKC", raw)
-    text = text.translate(
-        str.maketrans(
-            {
-                "\u2018": "'",
-                "\u2019": "'",
-                "\u201a": "'",
-                "\u201b": "'",
-                "\u201c": '"',
-                "\u201d": '"',
-                "\u201e": '"',
-                "\u201f": '"',
-                "\u2013": "-",
-                "\u2014": "-",
-                "\u2015": "-",
-                "\u2212": "-",
-                "\u00a0": " ",
-                "\u2009": " ",
-                "\u200a": " ",
-                "\u202f": " ",
-                "\u2026": "...",
-                "\ufeff": "",
-                "\u200b": "",
-                "\u200c": "",
-                "\u200d": "",
-            }
-        )
-    )
+    replacements: dict[str, str | int | None] = {
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201a": "'",
+        "\u201b": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u201e": '"',
+        "\u201f": '"',
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2015": "-",
+        "\u2212": "-",
+        "\u00a0": " ",
+        "\u2009": " ",
+        "\u200a": " ",
+        "\u202f": " ",
+        "\u2026": "...",
+        "\ufeff": "",
+        "\u200b": "",
+        "\u200c": "",
+        "\u200d": "",
+    }
+    text = text.translate(str.maketrans(replacements))
     text = _CONTROL.sub(" ", text)
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r" *\n *", "\n", text)
@@ -339,10 +337,21 @@ class ParsedDocument:
 # ---------------------------------------------------------------------------
 # The cascade
 # ---------------------------------------------------------------------------
-def _pages_from_pymupdf(data: bytes) -> Iterator[tuple[int, str]]:
+def _open_pdf(data: bytes) -> Any:
+    """Open a PDF with PyMuPDF.
+
+    PyMuPDF's Document constructor carries no annotations, so this is the one place the untyped
+    boundary is crossed. Naming it here keeps every call site typed.
+    """
     import pymupdf
 
-    with pymupdf.open(stream=data, filetype="pdf") as doc:
+    # PyMuPDF ships a py.typed marker but its Document constructor is unannotated, so mypy reads the
+    # call as untyped. This is the only place that boundary is crossed, and it is crossed once.
+    return pymupdf.open(stream=data, filetype="pdf")  # type: ignore[no-untyped-call]
+
+
+def _pages_from_pymupdf(data: bytes) -> Iterator[tuple[int, str]]:
+    with _open_pdf(data) as doc:
         for number, page in enumerate(doc, start=1):
             yield number, page.get_text("text")
 
@@ -379,14 +388,13 @@ def _page_from_pdfplumber(data: bytes, page_number: int) -> str:
 def _page_from_tesseract(data: bytes, page_number: int, *, dpi: int = 300) -> str:
     import io
 
-    import pymupdf
     import pytesseract
     from PIL import Image
 
-    with pymupdf.open(stream=data, filetype="pdf") as doc:
-        if page_number > doc.page_count:
+    with _open_pdf(data) as document:
+        if page_number > document.page_count:
             return ""
-        page = doc[page_number - 1]
+        page = document[page_number - 1]
         pixmap = page.get_pixmap(dpi=dpi)
         image = Image.open(io.BytesIO(pixmap.tobytes("png")))
     return str(pytesseract.image_to_string(image))

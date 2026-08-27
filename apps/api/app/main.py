@@ -5,9 +5,9 @@ service.
 
 Two behaviours here are load bearing rather than boilerplate.
 
-**Every response carries the disclaimer and the data date.** Section 15.1 requires it on every API
-response, not only in the terms of service, so it is added by middleware rather than by each endpoint
-remembering.
+**Every response carries the disclaimer and the data date.** Section 15.1 requires this on every API
+response rather than only in the terms of service, so it is added by middleware instead of by each
+endpoint remembering.
 
 **Startup fails loudly rather than degrading quietly.** If the ledger does not verify, the service
 refuses to start, because serving an accuracy page from a broken chain would make a public claim on a
@@ -38,9 +38,7 @@ from auspice.logging import get_logger
 
 log = get_logger(__name__, _stage="api")
 
-DISCLAIMER = (
-    "Probabilistic opinion, not legal advice. See /v1/public/methodology."
-)
+DISCLAIMER = "Probabilistic opinion, not legal advice. See /v1/public/methodology."
 
 
 @asynccontextmanager
@@ -49,9 +47,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     key_ring = get_key_ring()
 
     if key_ring.is_open and settings.env is not Environment.development:
-        raise RuntimeError(
-            "AUSPICE_API_KEYS is empty outside development. The API is not public."
-        )
+        raise RuntimeError("AUSPICE_API_KEYS is empty outside development. The API is not public.")
     if key_ring.is_open:
         log.warning(
             "no API keys configured, so every request is treated as an enterprise principal. "
@@ -175,9 +171,7 @@ async def healthz(request: Request, conn: Db) -> HealthResponse:
     if models is None:
         detail.append("serving models not loaded")
     elif decisions == 0:
-        detail.append(
-            "no decided applications with verified evidence, so every score will abstain"
-        )
+        detail.append("no decided applications with verified evidence, so every score will abstain")
 
     healthy = database and models is not None and chain_ok is not False
     return HealthResponse(

@@ -13,7 +13,7 @@ confident, wrong accuracy record, which is worse than having no record at all.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -380,12 +380,14 @@ class IsotonicCalibrator:
         return self
 
     def transform(self, p: np.ndarray) -> np.ndarray:
+        values = np.asarray(p, dtype=np.float64)
         if self.thresholds is None or self.values is None:
-            return np.asarray(p, dtype=np.float64)
-        return np.asarray(
-            np.interp(np.asarray(p, dtype=np.float64), self.thresholds, self.values),
-            dtype=np.float64,
-        )
+            return values
+        # np.interp is annotated as returning Any when its inputs are, so the result is cast rather
+        # than merely annotated. cast states that the narrowing is the author's claim, which is what it
+        # is: numpy guarantees an ndarray here, its stubs do not say so.
+        interpolated = np.interp(values, self.thresholds, self.values)
+        return cast("np.ndarray", np.asarray(interpolated, dtype=np.float64))
 
     def params(self) -> dict[str, Any]:
         return {
@@ -404,7 +406,7 @@ def choose_calibrator(y: np.ndarray, p: np.ndarray) -> PlattCalibrator | Isotoni
 
 def _logit(p: np.ndarray, *, epsilon: float = 1e-9) -> np.ndarray:
     clipped = np.clip(p, epsilon, 1.0 - epsilon)
-    return np.log(clipped / (1.0 - clipped))
+    return cast("np.ndarray", np.log(clipped / (1.0 - clipped)))
 
 
 # ---------------------------------------------------------------------------

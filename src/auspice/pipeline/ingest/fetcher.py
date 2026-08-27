@@ -106,9 +106,8 @@ class RobotsCache:
         if origin not in self._parsers:
             parser = await self._load(origin, client)
             self._parsers[origin] = parser
-            self._crawl_delay[origin] = (
-                parser.crawl_delay(self._user_agent) if parser is not None else None
-            ) or None
+            raw_delay = parser.crawl_delay(self._user_agent) if parser is not None else None
+            self._crawl_delay[origin] = float(raw_delay) if raw_delay else None
         parser = self._parsers[origin]
         if parser is None:
             return True

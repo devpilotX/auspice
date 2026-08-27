@@ -106,4 +106,5 @@ def synthetic_dataset(synthetic_corpus):  # type: ignore[no-untyped-def]
 
 @pytest.fixture
 def synthetic_split(synthetic_dataset) -> tuple[pl.DataFrame, pl.DataFrame]:  # type: ignore[no-untyped-def]
-    return synthetic_dataset.temporal_split(date(2024, 1, 1))
+    train, test = synthetic_dataset.temporal_split(date(2024, 1, 1))
+    return train, test

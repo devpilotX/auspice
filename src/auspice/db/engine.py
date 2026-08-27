@@ -15,6 +15,7 @@ from __future__ import annotations
 import functools
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import Any
 
 from sqlalchemy import Connection, Engine, create_engine, event, text
 from sqlalchemy.pool import NullPool
@@ -33,7 +34,7 @@ def get_engine(*, test: bool = False) -> Engine:
     # Tests create and drop schemas, and a pool that holds connections across those boundaries
     # produces failures that look like schema bugs and are not. NullPool takes no sizing arguments,
     # so the two cases are built separately rather than by passing a None that SQLAlchemy rejects.
-    options: dict[str, object] = {
+    options: dict[str, Any] = {
         "echo": settings.db_echo,
         "pool_pre_ping": True,
         "future": True,
@@ -45,11 +46,11 @@ def get_engine(*, test: bool = False) -> Engine:
         options["pool_size"] = settings.db_pool_size
         options["max_overflow"] = max(2, settings.db_pool_size // 2)
 
-    engine = create_engine(url, **options)  # type: ignore[arg-type]
+    engine = create_engine(url, **options)
 
     @event.listens_for(engine, "connect")
-    def _set_session_defaults(dbapi_connection: object, _record: object) -> None:
-        cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
+    def _set_session_defaults(dbapi_connection: Any, _record: object) -> None:
+        cursor = dbapi_connection.cursor()
         # UTC everywhere. A bi-temporal system with a local timezone is a bi-temporal
         # system with a bug that appears twice a year.
         cursor.execute("SET TIME ZONE 'UTC'")
@@ -64,7 +65,7 @@ def get_engine(*, test: bool = False) -> Engine:
 def dispose_engine() -> None:
     for test in (False, True):
         try:
-            engine = get_engine.__wrapped__(test=test)  # type: ignore[attr-defined]
+            engine = get_engine.__wrapped__(test=test)
         except Exception:
             continue
         engine.dispose()
@@ -88,7 +89,7 @@ def transaction(*, test: bool = False) -> Iterator[Connection]:
 def required_extensions(conn: Connection) -> dict[str, str]:
     """Installed extension versions, keyed by name."""
     rows = conn.execute(text("SELECT extname, extversion FROM pg_extension")).all()
-    return dict(rows)
+    return {str(row[0]): str(row[1]) for row in rows}
 
 
 def assert_extensions(conn: Connection) -> None:

@@ -369,7 +369,7 @@ def run_kill_test(
         ),
     )
     primary = scored[primary_name]
-    curve: ReliabilityCurve = primary.pop("_curve")
+    primary_curve: ReliabilityCurve = primary.pop("_curve")
     for other in scored.values():
         other.pop("_curve", None)
 
@@ -379,7 +379,7 @@ def run_kill_test(
         "base_rate_params": base_rate.params(),
         "models": {name: _display(values) for name, values in scored.items()},
     }
-    result.reliability = curve.as_dict()
+    result.reliability = primary_curve.as_dict()
 
     # --- The gates ---------------------------------------------------------
     skill = primary["brier_skill_vs_base_rate"]
@@ -459,11 +459,12 @@ def _abstention_mask(test: pl.DataFrame, intervals: np.ndarray) -> np.ndarray:
     # agree about how thin a jurisdiction is.
     pooling = 4.0 / (4.0 + comparables)
 
-    return (
+    mask: np.ndarray = (
         (comparables < ABSTAIN_MAX_COMPARABLES)
         & (pooling > ABSTAIN_MAX_POOLING_WEIGHT)
         & (width > ABSTAIN_MAX_INTERVAL_WIDTH)
     )
+    return mask
 
 
 def _abstention_gate(abstention: dict[str, float | None]) -> bool:

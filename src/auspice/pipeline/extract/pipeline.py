@@ -189,7 +189,7 @@ def extract_document(
 
     report.documents += 1
     document_text = render_for_model(parsed)
-    variables = {
+    variables: dict[str, object] = {
         "jurisdiction_name": jurisdiction_name,
         "region": region,
         "document_kind": document_kind,

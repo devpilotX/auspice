@@ -1,1 +1,1 @@
-﻿"""The Auspice API service."""
+"""The Auspice API service."""

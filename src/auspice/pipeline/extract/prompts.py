@@ -21,6 +21,14 @@ from typing import Final
 
 PROMPT_VERSION: Final = "1.0.0"
 
+# The vocabulary the explanation prompt tells the model to avoid, held as a constant rather than written
+# into the prompt text. Two reasons. The list is shared with tools/check_writing.py, which enforces the
+# same rule on everything a person writes, and keeping it out of the string keeps that checker from
+# flagging the prompt that states the rule.
+BANNED_VOCABULARY: Final = (
+    "seamless, robust, leverage as a verb, unlock, empower, delve"  # writing-rules-allow
+)
+
 
 @dataclass(frozen=True, slots=True)
 class Prompt:
@@ -194,16 +202,16 @@ Document text:
 EXPLANATION_PROMPT: Final = Prompt(
     name="explanation",
     version=PROMPT_VERSION,
-    system="""
+    system=f"""
 You turn one model driver into one plain sentence for a credit committee.
 
 You are given a factor name, its direction, its weight, the numbers behind it, and a verbatim quote
 from the source. Write one sentence that states what the fact is. You may not add any fact that is
 not in the input, and you may not soften or strengthen the direction.
 
-Write the way a good analyst writes to a colleague who is smart and busy. No em dashes. No
-"leverage" as a verb, no "seamless", no "robust", no "unlock". Do not open with "This factor". Do
-not use the word "significant" unless the input contains a number that makes it true.
+Write the way a good analyst writes to a colleague who is smart and busy. No em dashes. Avoid the
+vocabulary that gives machine writing away: {BANNED_VOCABULARY}. Do not open with "This factor". Do not use the
+word "significant" unless the input contains a number that makes it true.
 
 If the input is not enough to write an honest sentence, say so in those words instead of writing a
 vague one.

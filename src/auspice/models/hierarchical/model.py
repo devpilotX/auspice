@@ -35,7 +35,7 @@ gives divergent transitions on data this thin.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import polars as pl
@@ -348,19 +348,21 @@ class HierarchicalModel:
             rng = np.random.default_rng(seed)
             logits = logits + imputation_sd * rng.standard_normal(logits.shape)
 
-        return logits
+        return cast("np.ndarray", logits)
 
     def predict(self, frame: pl.DataFrame) -> np.ndarray:
         """Posterior mean probability."""
         logits = self.posterior_logits(frame)
-        return np.asarray(_sigmoid(logits).mean(axis=0), dtype=np.float64)
+        mean: np.ndarray = _sigmoid(logits).mean(axis=0)
+        return mean.astype(np.float64)
 
     def predict_interval(self, frame: pl.DataFrame, *, level: float = 0.80) -> np.ndarray:
         """Credible interval, shape (n, 2). This one really is a credible interval."""
         probabilities = _sigmoid(self.posterior_logits(frame))
         lower = np.quantile(probabilities, (1.0 - level) / 2.0, axis=0)
         upper = np.quantile(probabilities, 1.0 - (1.0 - level) / 2.0, axis=0)
-        return np.stack([lower, upper], axis=1)
+        stacked = np.stack([lower, upper], axis=1)
+        return cast("np.ndarray", np.asarray(stacked, dtype=np.float64))
 
     def pooling_weight(self, _jurisdiction: str, *, local_observations: int) -> float:
         """Share of the estimate borrowed from other jurisdictions.
@@ -447,7 +449,8 @@ class HierarchicalModel:
 
 
 def _sigmoid(x: np.ndarray) -> np.ndarray:
-    return 1.0 / (1.0 + np.exp(-np.clip(x, -30.0, 30.0)))
+    result: np.ndarray = 1.0 / (1.0 + np.exp(-np.clip(x, -30.0, 30.0)))
+    return result
 
 
 def _diagnostics(mcmc: Any, *, chains: int) -> dict[str, Any]:

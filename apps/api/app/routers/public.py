@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import text
+from sqlalchemy import Connection, text
 
 from app.deps import Db
 from app.schemas import (
@@ -34,7 +34,7 @@ NO_RECORD_YET = (
 )
 
 
-def _freshness(conn: Db, slug: str | None = None) -> list[dict[str, Any]]:
+def _freshness(conn: Connection, slug: str | None = None) -> list[dict[str, Any]]:
     from auspice.pipeline.ingest import freshness_report
 
     rows = freshness_report(conn)
@@ -49,21 +49,29 @@ async def accuracy(conn: Db) -> AccuracyResponse:
 
     record = ledger.public_record(conn)
 
-    kill_test = conn.execute(
-        text(
-            """
+    kill_test = (
+        conn.execute(
+            text(
+                """
             SELECT metrics, n_train, n_test, train_cutoff, trained_at, dataset_hash
             FROM model_run
             WHERE metrics ? 'brier_skill_vs_base_rate'
             ORDER BY trained_at DESC
             LIMIT 1
             """
+            )
         )
-    ).mappings().first()
+        .mappings()
+        .first()
+    )
 
-    statement = NO_RECORD_YET if record["resolved"] == 0 else (
-        f"{record['answered']} predictions have resolved and been graded. The Brier score below "
-        "counts every one of them, including the ones we got wrong, which are listed in full."
+    statement = (
+        NO_RECORD_YET
+        if record["resolved"] == 0
+        else (
+            f"{record['answered']} predictions have resolved and been graded. The Brier score below "
+            "counts every one of them, including the ones we got wrong, which are listed in full."
+        )
     )
 
     return AccuracyResponse(
@@ -147,9 +155,10 @@ async def jurisdiction_profile(slug: str, conn: Db) -> JurisdictionProfile:
             detail=f"{slug} is not in the registry. Twelve counties are covered; the rest abstain.",
         )
 
-    rates = conn.execute(
-        text(
-            """
+    rates = (
+        conn.execute(
+            text(
+                """
             SELECT
                 a.use_class,
                 count(*) FILTER (
@@ -165,35 +174,47 @@ async def jurisdiction_profile(slug: str, conn: Db) -> JurisdictionProfile:
               )
             GROUP BY a.use_class
             """
-        ).bindparams(slug=slug)
-    ).mappings().all()
+            ).bindparams(slug=slug)
+        )
+        .mappings()
+        .all()
+    )
 
-    instruments = conn.execute(
-        text(
-            """
+    instruments = (
+        conn.execute(
+            text(
+                """
             SELECT i.kind, i.citation, i.title, i.adopted_on, i.expires_on, i.restrictions,
                    i.applies_to_use_classes
             FROM instrument i JOIN jurisdiction j ON j.id = i.jurisdiction_id
             WHERE j.slug = :slug
             ORDER BY i.adopted_on DESC NULLS LAST
             """
-        ).bindparams(slug=slug)
-    ).mappings().all()
+            ).bindparams(slug=slug)
+        )
+        .mappings()
+        .all()
+    )
 
-    bodies = conn.execute(
-        text(
-            """
+    bodies = (
+        conn.execute(
+            text(
+                """
             SELECT b.name, b.kind, b.seats, b.quorum, b.vote_threshold, b.recommendation_is_binding
             FROM decision_body b JOIN jurisdiction j ON j.id = b.jurisdiction_id
             WHERE j.slug = :slug
             ORDER BY b.seats DESC NULLS LAST
             """
-        ).bindparams(slug=slug)
-    ).mappings().all()
+            ).bindparams(slug=slug)
+        )
+        .mappings()
+        .all()
+    )
 
-    elections = conn.execute(
-        text(
-            """
+    elections = (
+        conn.execute(
+            text(
+                """
             SELECT b.name AS body, e.election_date, e.seats_contested
             FROM election e
             JOIN decision_body b ON b.id = e.body_id
@@ -202,8 +223,11 @@ async def jurisdiction_profile(slug: str, conn: Db) -> JurisdictionProfile:
             ORDER BY e.election_date
             LIMIT 4
             """
-        ).bindparams(slug=slug)
-    ).mappings().all()
+            ).bindparams(slug=slug)
+        )
+        .mappings()
+        .all()
+    )
 
     return JurisdictionProfile(
         summary=summary,
@@ -229,7 +253,9 @@ async def freshness(conn: Db) -> list[FreshnessRow]:
             platform=row["platform"],
             refresh_hours=int(row["refresh_hours"]),
             hours_since_success=(
-                float(row["hours_since_success"]) if row["hours_since_success"] is not None else None
+                float(row["hours_since_success"])
+                if row["hours_since_success"] is not None
+                else None
             ),
             consecutive_failures=int(row["consecutive_failures"]),
             status=row["status"],

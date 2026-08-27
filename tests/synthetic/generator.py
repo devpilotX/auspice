@@ -42,6 +42,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+from typing import Any
 
 import numpy as np
 import polars as pl
@@ -159,7 +160,7 @@ def generate(
     cluster_means = {name: float(mu_0 + tau * rng.standard_normal()) for name in cluster_names}
 
     frameworks = ["dillons_rule", "home_rule", "mixed"]
-    jurisdictions: list[dict[str, object]] = []
+    jurisdictions: list[dict[str, Any]] = []
     intercepts: dict[str, float] = {}
 
     for index in range(n_jurisdictions):
@@ -240,7 +241,7 @@ def generate(
             else:
                 outcome, risk, decided_on, months_to_decision = "denied", "denial", decided, months
 
-            row: dict[str, object] = {
+            row: dict[str, Any] = {
                 "application_id": len(rows) + 1,
                 "jurisdiction": slug,
                 "region": str(jurisdiction["region"]),

@@ -84,7 +84,8 @@ class SurvivalModel:
         self.n_censored = self.n_train - self.n_events
 
         observed = prepared.filter(pl.col(event_col) == 1).select(duration_col).to_series()
-        self.median_fallback = float(observed.median()) if observed.len() else 12.0
+        median = observed.median() if observed.len() else None
+        self.median_fallback = float(median) if isinstance(median, (int, float)) else 12.0
 
         if self.n_events < MIN_EVENTS:
             self.notes.append(
@@ -352,7 +353,8 @@ def _rank_by_completeness(frame: pl.DataFrame, columns: list[str]) -> list[str]:
             continue
         series = frame.select(column).to_series()
         present = 1.0 - (series.null_count() / max(frame.height, 1))
-        spread = float(series.std() or 0.0)
+        deviation = series.std()
+        spread = float(deviation) if isinstance(deviation, (int, float)) else 0.0
         if present < 0.5 or spread == 0.0:
             continue
         scored.append((present * min(spread, 1.0), column))

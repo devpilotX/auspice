@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Auspice permission memo, {{ head.name }}</title>
+{# ---------------------------------------------------------------------------
+   The memo carries its own copy of the tokens rather than importing the web
+   stylesheet, for one reason: this document goes into a deal file and has to
+   render identically in ten years, on a machine that cannot reach our server.
+   A self contained file with no external request is the only version of that
+   which actually works.
+
+   The values are the same values. If they drift, the memo stops looking like
+   the product, which is visible immediately.
+   --------------------------------------------------------------------------- #}
+<style>
+  :root {
+    --paper: #FBFBF9;
+    --surface: #FFFFFF;
+    --rule: #E4E4E0;
+    --rule-2: #C9CBC6;
+    --ink-3: #8B9199;
+    --ink-2: #5A6068;
+    --ink: #14161A;
+    --brass: #A8802C;
+    --brass-ink: #6E5218;
+    --brass-wash: #FAF6EC;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.5;
+  }
+
+  .numeric {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  h1, h2, h3 { margin: 0; font-weight: 500; }
+
+  .label {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 7.5pt;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  .rule { height: 1px; background: var(--rule); margin: 14pt 0; }
+  .rule-strong { height: 1px; background: var(--rule-2); margin: 16pt 0; }
+
+  section { break-inside: avoid; margin-bottom: 22pt; }
+  .keep { break-inside: avoid; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left;
+    font-weight: 400;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 7.5pt;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    border-bottom: 1px solid var(--rule-2);
+    padding-bottom: 5pt;
+  }
+  td { border-bottom: 1px solid var(--rule); padding: 7pt 8pt 7pt 0; vertical-align: top; }
+  td:last-child, th:last-child { padding-right: 0; }
+
+  dl { margin: 0; display: grid; grid-template-columns: 1fr 1fr; column-gap: 24pt; }
+  dl > div {
+    display: flex; justify-content: space-between; align-items: baseline;
+    border-bottom: 1px solid var(--rule); padding: 5pt 0;
+  }
+  dt { color: var(--ink-2); font-size: 9.5pt; }
+  dd {
+    margin: 0; text-align: right; font-size: 9.5pt;
+    font-family: ui-monospace, Consolas, monospace; font-variant-numeric: tabular-nums;
+  }
+
+  blockquote {
+    margin: 8pt 0 0 0;
+    padding-left: 10pt;
+    border-left: 2px solid var(--brass);
+    font-family: ui-serif, Georgia, serif;
+    font-size: 10pt;
+    line-height: 1.5;
+  }
+
+  .tag {
+    display: inline-block;
+    padding: 1.5pt 5pt;
+    border: 1px solid var(--rule);
+    background: var(--brass-wash);
+    color: var(--brass-ink);
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 7.5pt;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .panel { border: 1px solid var(--rule-2); background: var(--surface); padding: 14pt; }
+
+  .determination { font-family: ui-monospace, Consolas, monospace; font-size: 44pt; line-height: 1; letter-spacing: -0.03em; }
+
+  .muted { color: var(--ink-2); }
+  .tertiary { color: var(--ink-3); font-size: 8.5pt; }
+
+  .bar { display: inline-block; height: 6pt; background: var(--ink); }
+  .bar-track { display: inline-block; width: 84pt; height: 6pt; background: var(--rule); position: relative; }
+
+  a { color: var(--brass-ink); text-decoration: underline; text-underline-offset: 2px; }
+</style>
+</head>
+<body>
+
+{# =========================================================================
+   Caption. Set like a legal caption, because that is what it is.
+   ========================================================================= #}
+<header>
+  <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+    <div>
+      <div class="label">permission memo</div>
+      <h1 style="font-family:ui-serif,Georgia,serif; font-size:22pt; line-height:1.2; margin-top:6pt;">
+        {{ head.name }}
+      </h1>
+      <div class="muted" style="margin-top:4pt; font-size:9.5pt;">
+        {{ use_class_label }} &middot; {{ relief_label }}
+      </div>
+    </div>
+    <div style="text-align:right;">
+      <div class="label">auspice</div>
+      <div class="numeric tertiary" style="margin-top:6pt;">{{ score.public_id }}</div>
+      <div class="numeric tertiary">{{ generated_at.strftime('%d %B %Y') }}</div>
+      {% if prepared_for %}
+      <div class="tertiary" style="margin-top:2pt;">for {{ prepared_for }}</div>
+      {% endif %}
+    </div>
+  </div>
+</header>
+
+<div class="rule-strong"></div>
+
+{# =========================================================================
+   The determination. Either a number with its interval, or the abstention as
+   the whole first section. There is no third option and no greyed out number.
+   ========================================================================= #}
+<section class="keep">
+  {% if determination.abstained %}
+  <div class="panel">
+    <div class="label">determination</div>
+    <h2 style="font-family:ui-serif,Georgia,serif; font-size:20pt; margin-top:8pt;">We do not know.</h2>
+    <p style="margin-top:10pt; max-width:34em;">
+      We are not giving a probability for this site. The evidence is too thin to support one, and a number
+      produced from evidence this thin would be indistinguishable from a number produced from good
+      evidence. We would rather this memo say nothing than carry a figure we cannot stand behind.
+    </p>
+    <div class="rule"></div>
+    <div class="label">why</div>
+    <ul style="margin:8pt 0 0 0; padding-left:14pt;">
+      {% for reason in determination.abstention_reasons %}
+      <li style="margin-bottom:4pt;">
+        {% if reason.value == 'thin_local_record' %}
+          Fewer than three comparable decisions are on record in this jurisdiction.
+        {% elif reason.value == 'dominated_by_pooling' %}
+          More than 80 percent of any estimate would be borrowed from other jurisdictions.
+        {% elif reason.value == 'interval_too_wide' %}
+          The 80 percent interval would be wider than 0.35, which carries no information.
+        {% elif reason.value == 'stale_jurisdiction_data' %}
+          Our data for this jurisdiction is more than 90 days old, so the rules an estimate assumed may
+          no longer be in force.
+        {% elif reason.value == 'unresolved_jurisdiction_chain' %}
+          We cannot establish which body decides for this parcel.
+        {% else %}
+          {{ reason.value.replace('_', ' ') }}
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="muted" style="margin-top:12pt; max-width:34em;">
+      What follows is still worth reading. The rules in force, the composition of the deciding body and the
+      recent decision history are facts. What we will not do is turn them into a probability that implies
+      more than they support.
+    </p>
+  </div>
+  {% else %}
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:24pt;">
+    <div>
+      <div class="label">probability of approval</div>
+      <div class="determination" style="margin-top:6pt;">{{ determination.approval_probability | percent }}</div>
+      <div class="numeric muted" style="margin-top:8pt; font-size:9.5pt;">
+        80% interval {{ interval[0] | percent }} to {{ interval[1] | percent }}
+      </div>
+      {% if determination.confidence %}
+      <div style="margin-top:8pt;"><span class="tag">{{ determination.confidence.value }} confidence</span></div>
+      {% endif %}
+      {% if determination.interval_kind == 'bootstrap' %}
+      <div class="tertiary" style="margin-top:6pt;">
+        A bootstrap interval, not a credible interval. It is wider and less principled, and it is labelled
+        as such wherever it appears.
+      </div>
+      {% endif %}
+    </div>
+    <div style="min-width:200pt;">
+      <div class="label">against this county&rsquo;s own record</div>
+      <dl style="grid-template-columns:1fr; margin-top:6pt;">
+        <div>
+          <dt>this site</dt>
+          <dd>{{ determination.approval_probability | percent }}</dd>
+        </div>
+        <div>
+          <dt>county base rate, this use class</dt>
+          <dd>{{ determination.local_base_rate | percent }}</dd>
+        </div>
+        {% if determination.time_to_decision_months %}
+        <div>
+          <dt>months to a decision, p10 / p50 / p90</dt>
+          <dd>
+            {{ determination.time_to_decision_months.p10 | months }} /
+            {{ determination.time_to_decision_months.p50 | months }} /
+            {{ determination.time_to_decision_months.p90 | months }}
+          </dd>
+        </div>
+        {% endif %}
+        {% if determination.probability_of_rule_change_before_decision is not none %}
+        <div>
+          <dt>rules change before a decision</dt>
+          <dd>{{ determination.probability_of_rule_change_before_decision | percent }}</dd>
+        </div>
+        {% endif %}
+      </dl>
+    </div>
+  </div>
+  {% endif %}
+</section>
+
+{# =========================================================================
+   Caption block. Jurisdiction, body, authority, relief, dates, model, depth.
+   ========================================================================= #}
+<section>
+  <div class="label">caption</div>
+  <dl style="margin-top:8pt;">
+    <div><dt>jurisdiction</dt><dd>{{ head.name }}</dd></div>
+    <div><dt>authority</dt><dd>{{ head.role.value.replace('_', ' ') }}</dd></div>
+    <div><dt>use class</dt><dd>{{ use_class_label }}</dd></div>
+    <div><dt>relief sought</dt><dd>{{ relief_label }}</dd></div>
+    <div><dt>by right</dt><dd>{% if site.by_right is none %}not established{% elif site.by_right %}yes{% else %}no{% endif %}</dd></div>
+    <div><dt>site area</dt><dd>{% if site.acres %}{{ '%.0f' | format(site.acres) }} acres{% else %}not stated{% endif %}</dd></div>
+    <div><dt>capacity</dt><dd>{% if site.capacity_mw %}{{ '%.0f' | format(site.capacity_mw) }} MW{% else %}not stated{% endif %}</dd></div>
+    <div><dt>discretion index</dt><dd>{% if head.discretion_index is none %}not computable{% else %}{{ '%.2f' | format(head.discretion_index) }}{% endif %}</dd></div>
+    <div><dt>data as of</dt><dd>{{ provenance.data_as_of.isoformat() }}</dd></div>
+    <div><dt>model</dt><dd>{{ provenance.model_kind }} {{ provenance.model_version }}</dd></div>
+    <div><dt>comparable decisions</dt><dd>{{ head.data_depth }}</dd></div>
+    <div><dt>documents used</dt><dd>{{ provenance.documents_used }}</dd></div>
+  </dl>
+  {% if provenance.stale %}
+  <p class="muted" style="margin-top:10pt;">
+    Our data for this jurisdiction is {{ provenance.staleness_days }} days old. Anything below may have
+    changed since, and this memo should not be relied on past its refresh window.
+  </p>
+  {% endif %}
+</section>
+
+{# =========================================================================
+   Drivers, each with the quote behind it.
+   ========================================================================= #}
+{% if drivers %}
+<section>
+  <div class="label">what moves the number</div>
+  <table style="margin-top:8pt;">
+    <thead>
+      <tr><th>factor</th><th style="width:96pt;">direction</th><th style="width:44pt;">weight</th></tr>
+    </thead>
+    <tbody>
+      {% for driver in drivers %}
+      <tr class="keep">
+        <td>
+          {{ driver.plain_language }}
+          {% if driver.evidence_id and driver.evidence_id in evidence_by_id %}
+          {% set source = evidence_by_id[driver.evidence_id] %}
+          <blockquote>
+            {{ source.quote }}
+            <div class="tertiary" style="margin-top:5pt; font-family:ui-sans-serif,system-ui,sans-serif;">
+              {{ source.document_title or source.source_url }}{% if source.page %}, page {{ source.page }}{% endif %}.
+              <a href="{{ source.source_url }}">{{ source.source_url }}</a>
+            </div>
+          </blockquote>
+          {% else %}
+          <div class="tertiary" style="margin-top:4pt;">
+            From the jurisdiction registry. There is no quotable document behind this one.
+          </div>
+          {% endif %}
+        </td>
+        <td>
+          <span class="bar-track">
+            <span class="bar" style="width:{{ (driver.weight * 84) | round(1) }}pt;"></span>
+          </span>
+          <div class="tertiary" style="margin-top:3pt;">
+            {% if driver.direction == 'negative' %}reduces{% else %}increases{% endif %} the probability
+          </div>
+        </td>
+        <td class="numeric">{{ '%.2f' | format(driver.weight) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+{# =========================================================================
+   Precedents. The specific decisions the estimate rests on.
+   ========================================================================= #}
+{% if precedents %}
+<section>
+  <div class="label">the decisions this rests on</div>
+  <table style="margin-top:8pt;">
+    <thead>
+      <tr>
+        <th>case</th><th style="width:56pt;">decided</th><th style="width:96pt;">outcome</th>
+        <th style="width:40pt;">vote</th><th style="width:52pt;">months</th><th style="width:56pt;">similarity</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for precedent in precedents %}
+      <tr class="keep">
+        <td>
+          <span class="numeric">{{ precedent.external_id or precedent.application_id }}</span>
+          {% if precedent.objection_grounds %}
+          <div class="tertiary" style="margin-top:3pt;">
+            objections: {{ precedent.objection_grounds | map(attribute='value') | join(', ') }}
+          </div>
+          {% endif %}
+          {% if precedent.evidence_id and precedent.evidence_id in evidence_by_id %}
+          {% set source = evidence_by_id[precedent.evidence_id] %}
+          <blockquote>
+            {{ source.quote }}
+            <div class="tertiary" style="margin-top:5pt; font-family:ui-sans-serif,system-ui,sans-serif;">
+              <a href="{{ source.source_url }}">{{ source.document_title or source.source_url }}</a>
+            </div>
+          </blockquote>
+          {% endif %}
+        </td>
+        <td class="numeric">{{ precedent.decided_on.isoformat() if precedent.decided_on else 'not stated' }}</td>
+        <td>{{ precedent.outcome.value.replace('_', ' ') }}</td>
+        <td class="numeric">{{ precedent.vote or '.' }}</td>
+        <td class="numeric">{{ precedent.months_to_decision | months }}</td>
+        <td class="numeric">{{ '%.2f' | format(precedent.similarity) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+{# =========================================================================
+   Mitigations and alternatives. Where the money is actually saved.
+   ========================================================================= #}
+{% if mitigations %}
+<section>
+  <div class="label">what could change the answer</div>
+  <table style="margin-top:8pt;">
+    <thead><tr><th>action</th><th style="width:64pt;">effect</th></tr></thead>
+    <tbody>
+      {% for mitigation in mitigations %}
+      <tr class="keep">
+        <td>
+          {{ mitigation.action }}
+          <div class="tertiary" style="margin-top:4pt;">{{ mitigation.basis }}</div>
+        </td>
+        <td class="numeric">
+          {% if mitigation.expected_delta == 0 %}not priced{% else %}{{ '%+.2f' | format(mitigation.expected_delta) }}{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+{% if alternatives %}
+<section>
+  <div class="label">where else this could go</div>
+  <table style="margin-top:8pt;">
+    <thead>
+      <tr><th>jurisdiction</th><th style="width:64pt;">distance</th><th style="width:72pt;">probability</th><th style="width:56pt;">rank</th></tr>
+    </thead>
+    <tbody>
+      {% for alternative in alternatives %}
+      <tr>
+        <td>
+          {{ alternative.jurisdiction }}
+          {% if alternative.note %}<div class="tertiary" style="margin-top:3pt;">{{ alternative.note }}</div>{% endif %}
+        </td>
+        <td class="numeric">{{ '%.0f' | format(alternative.distance_km) }} km</td>
+        <td class="numeric">
+          {% if alternative.abstained %}we do not know{% else %}{{ alternative.approval_probability | percent }}{% endif %}
+        </td>
+        <td class="numeric">{{ '%+.2f' | format(alternative.expected_value_rank) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="tertiary" style="margin-top:8pt; max-width:38em;">
+    Ranked by probability less a relocation penalty of two points per hundred kilometres. That penalty is a
+    placeholder and it is stated as one, because only you know what moving actually costs you. Substitute
+    your own number and the order may change.
+  </p>
+</section>
+{% endif %}
+
+{# =========================================================================
+   Method, pooling and limits. The uncomfortable page, and the reason the rest
+   is credible.
+   ========================================================================= #}
+<div class="rule-strong"></div>
+
+<section>
+  <div class="label">how this number was produced, and what it does not know</div>
+
+  <p style="margin-top:8pt; max-width:38em;">
+    No language model produced this probability. Language models read the source documents and nothing
+    else. The number comes from a statistical model fitted to historical decisions, which is what makes it
+    possible to back test, calibrate, and publish an accuracy record against. Every quote in this memo was
+    checked character for character against the document it came from; quotes that did not match were
+    discarded rather than flagged.
+  </p>
+
+  {% if provenance.pooling_note %}
+  <p style="margin-top:10pt; max-width:38em;">{{ provenance.pooling_note }}</p>
+  {% endif %}
+
+  {% if provenance.features_missing %}
+  <div style="margin-top:12pt;">
+    <div class="label">not known for this site</div>
+    <p class="muted" style="margin-top:6pt; max-width:38em; font-size:9.5pt;">
+      {{ provenance.features_missing | join(', ') | replace('_', ' ') }}.
+    </p>
+    <p class="tertiary" style="margin-top:6pt; max-width:38em;">
+      These are recorded as unknown rather than filled with a default. Where a model needed them, the
+      uncertainty is carried into the interval, which is part of why the interval is as wide as it is.
+    </p>
+  </div>
+  {% endif %}
+
+  <div style="margin-top:14pt;">
+    <dl>
+      <div><dt>model version</dt><dd>{{ provenance.model_version }}</dd></div>
+      <div><dt>feature set</dt><dd>{{ provenance.feature_set_version }}</dd></div>
+      <div><dt>dataset hash</dt><dd>{{ provenance.dataset_hash[:16] }}</dd></div>
+      <div><dt>features hash</dt><dd>{{ score.features_hash[:16] }}</dd></div>
+      <div><dt>memo template</dt><dd>{{ template_version }}</dd></div>
+      <div><dt>pooling weight</dt><dd>{{ '%.2f' | format(provenance.pooling_weight) }}</dd></div>
+    </dl>
+  </div>
+
+  <p class="tertiary" style="margin-top:14pt; max-width:38em;">
+    {{ provenance.disclaimer }}
+  </p>
+  <p class="tertiary" style="margin-top:8pt; max-width:38em;">
+    Our published accuracy record, including every call we got wrong, is at
+    <a href="https://auspice.example/accuracy">auspice.example/accuracy</a>. If it is not there, do not
+    trust this document.
+  </p>
+</section>
+
+</body>
+</html>

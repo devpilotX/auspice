@@ -40,8 +40,8 @@ class BaseRateModel:
 
     global_rate: float = 0.5
     prior_strength: float = 4.0
-    by_juris_use: dict[tuple[str, str], tuple[int, int]] = field(default_factory=dict)
-    by_region_use: dict[tuple[str, str], tuple[int, int]] = field(default_factory=dict)
+    by_juris_use: dict[tuple[str, ...], tuple[int, int]] = field(default_factory=dict)
+    by_region_use: dict[tuple[str, ...], tuple[int, int]] = field(default_factory=dict)
     by_use: dict[str, tuple[int, int]] = field(default_factory=dict)
     n_train: int = 0
 
@@ -144,7 +144,7 @@ def _shrunk(cell: tuple[int, int] | None, prior_mean: float, strength: float) ->
     return float((successes + alpha) / (total + alpha + beta))
 
 
-def _fit_prior_strength(cells: dict[tuple[str, str], tuple[int, int]], global_rate: float) -> float:
+def _fit_prior_strength(cells: dict[tuple[str, ...], tuple[int, int]], global_rate: float) -> float:
     """Moment matched Beta prior strength.
 
     If the observed variance between jurisdictions is no larger than binomial sampling noise would

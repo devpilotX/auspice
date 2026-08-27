@@ -59,7 +59,7 @@ def _record(
         calibrator=calibrator,
         trained_at=datetime.now(UTC),
     )
-    statement = statement.on_conflict_do_update(
+    upsert = statement.on_conflict_do_update(
         index_elements=[
             schema.model_run.c.kind,
             schema.model_run.c.version,
@@ -74,7 +74,7 @@ def _record(
             "n_test": statement.excluded.n_test,
         },
     ).returning(schema.model_run.c.id)
-    return int(conn.execute(statement).scalar_one())
+    return int(conn.execute(upsert).scalar_one())
 
 
 def train_and_record(

@@ -349,7 +349,7 @@ class LabelLoadReport:
 
 def _jurisdiction_index(conn: Connection) -> dict[str, int]:
     rows = conn.execute(select(schema.jurisdiction.c.slug, schema.jurisdiction.c.id)).all()
-    return dict(rows)
+    return {str(row[0]): int(row[1]) for row in rows}
 
 
 def _body_index(conn: Connection) -> dict[tuple[int, str], int]:

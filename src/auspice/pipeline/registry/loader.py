@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import Any
 
 import httpx
 import yaml
@@ -114,10 +115,10 @@ def _upsert_jurisdiction(
 
     statement = pg_insert(schema.jurisdiction).values(**values)
     update_columns = {k: statement.excluded[k] for k in values if k != "slug"}
-    statement = statement.on_conflict_do_update(
+    upsert = statement.on_conflict_do_update(
         index_elements=[schema.jurisdiction.c.slug], set_=update_columns
     ).returning(schema.jurisdiction.c.id)
-    jurisdiction_id = conn.execute(statement).scalar_one()
+    jurisdiction_id = conn.execute(upsert).scalar_one()
 
     # Geometry is set separately so the EWKT literal is cast explicitly rather than relying on
     # driver level adaptation, which is where silent SRID loss happens.
@@ -152,7 +153,7 @@ def _load_bodies(
             meeting_cadence=body.meeting_cadence,
             statutory_decision_days=body.statutory_decision_days,
         )
-        statement = statement.on_conflict_do_update(
+        upsert = statement.on_conflict_do_update(
             index_elements=[schema.decision_body.c.jurisdiction_id, schema.decision_body.c.name],
             set_={
                 "kind": statement.excluded.kind,
@@ -164,7 +165,7 @@ def _load_bodies(
                 "statutory_decision_days": statement.excluded.statutory_decision_days,
             },
         ).returning(schema.decision_body.c.id)
-        body_id = int(conn.execute(statement).scalar_one())
+        body_id = int(conn.execute(upsert).scalar_one())
         report.bodies += 1
 
         # Rebuild the calendar rather than merge it. The rule is the source of truth.
@@ -356,7 +357,7 @@ def recompute_derived(conn: Connection) -> dict[str, dict[str, float | int | Non
     return summary
 
 
-def resolve_chain(conn: Connection, longitude: float, latitude: float) -> list[dict[str, object]]:
+def resolve_chain(conn: Connection, longitude: float, latitude: float) -> list[dict[str, Any]]:
     """Answer the stage 0 question: who actually decides for this point?
 
     A spatial join against the boundary index, ordered from the most local body outward. This
@@ -408,7 +409,7 @@ def resolve_chain(conn: Connection, longitude: float, latitude: float) -> list[d
     ]
 
 
-def registry_summary(conn: Connection) -> list[dict[str, object]]:
+def registry_summary(conn: Connection) -> list[dict[str, Any]]:
     """One row per jurisdiction, for `auspice registry status`."""
     rows = (
         conn.execute(
