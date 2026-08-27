@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 
 from auspice.config import Settings, get_settings
 
@@ -121,6 +121,7 @@ def get_key_ring() -> KeyRing:
 
 
 async def require_principal(
+    request: Request,
     x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
     key_ring: Annotated[KeyRing, Depends(get_key_ring)] = None,  # type: ignore[assignment]
 ) -> Principal:
@@ -131,6 +132,9 @@ async def require_principal(
             detail="An API key is required. Send it in the X-API-Key header.",
             headers={"WWW-Authenticate": "ApiKey"},
         )
+    # Recorded so the rate limiter charges a customer's own allowance rather than the address they share
+    # with everyone else behind the same office network.
+    request.state.principal_label = principal.label
     return principal
 
 

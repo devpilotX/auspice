@@ -10,13 +10,27 @@ Three mechanisms make that enforceable here rather than aspirational.
 **One as-of date, threaded everywhere.** Every query in this module takes ``as_of`` and every
 predicate filters on it. There is no code path that reads the current state of anything.
 
-**``known_from``, not ``occurred_on``.** The ``event`` table carries both. A decision that happened
-on 3 March but only appeared in minutes published on 20 March was not knowable on the 10th, and the
-history features read ``known_from`` so they cannot see it.
+**Occurrence dates, and what that costs.** History features filter on ``application.decided_on`` and on
+instrument adoption dates. Those are occurrence dates, not knowledge dates. The ``event`` table is
+bi-temporal and carries ``known_from`` alongside ``occurred_on``, with a CHECK that the former is not
+earlier than the latter, and ``monitor/watcher.py`` uses it correctly to find what changed since a time.
+The feature builder does not, because ``application`` and ``instrument`` have no knowledge date to filter
+on: they carry ``created_at``, which records when a row entered this database rather than when the fact
+became public.
 
-**A leakage test that tries to cheat.** ``tests/unit/test_no_leakage.py`` builds features for a row,
-then inserts a later decision, rebuilds, and asserts nothing moved. That is a test that fails if
-someone writes a query without the date predicate, which is the actual failure mode.
+For this corpus that is the right call and it is still worth stating plainly. The labelled rows were
+entered by hand recently, so ``created_at`` is a fact about our data entry and filtering on it would hide
+every historical decision from every past as-of date. The best available knowledge date for a decision is
+the date it was decided, because counties publish minutes within days of the meeting.
+
+What it costs: a backtest is optimistic to the extent that a decision reached the corpus later than the
+county published it. Our own ingestion lag is invisible to the model. ``docs/METHODOLOGY.md`` records this
+as a limitation on the calibration claim rather than leaving it as a comment here, and closing it properly
+means giving ``application`` a published-on date sourced from the document rather than from the clock.
+
+**A leakage test that tries to cheat.** ``tests/unit/test_leakage_and_schema.py`` builds features for a
+row, then inserts later decisions and a later ordinance, rebuilds, and asserts nothing moved. That fails
+if someone writes a query without the date predicate, which is the failure mode that actually happens.
 """
 
 from __future__ import annotations

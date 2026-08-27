@@ -24,10 +24,15 @@ test.describe("the two screens that must never silently break", () => {
   test("the coverage table", async ({ page }) => {
     await page.goto("/jurisdictions");
     await expect(page.getByRole("table").first()).toBeVisible();
-    // The map is masked. It is a WebGL canvas that paints when its tiles arrive, so including it would make
-    // this a test of tile timing rather than of the table, and it flaked in dark mode for exactly that
-    // reason. The map has its own tests, which check that tiles are fetched and decoded rather than that
-    // pixels match.
+
+    // Wait for the map to exist before shooting. It loads on demand, so without this the page is
+    // sometimes captured showing the loading placeholder and sometimes the canvas, and the two mask
+    // differently. That was the last flake in the suite, and it only appeared in dark mode in a full run.
+    await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible({ timeout: 20_000 });
+
+    // The map itself is masked. It is a WebGL canvas that paints when its tiles arrive, so including it
+    // would make this a test of tile timing rather than of the table. The map has its own tests, which
+    // check that tiles are fetched and decoded rather than that pixels match.
     await expect(page).toHaveScreenshot("coverage.png", {
       fullPage: true,
       mask: [page.locator("canvas.maplibregl-canvas"), page.locator(".maplibregl-ctrl-group")],

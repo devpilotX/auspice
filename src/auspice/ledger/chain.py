@@ -216,6 +216,42 @@ def verify(conn: Connection) -> VerificationReport:
         report.daily_roots[day] = str(row.entry_hash)
 
     report.head = expected_prev if rows else None
+
+    # Completeness. Everything above proves the entries present are internally consistent and correctly
+    # chained, which is not the same as proving none are missing.
+    #
+    # A deletion in the middle breaks the next entry's prev_hash, so it is already caught. A deletion at
+    # the tail is not: entries 1 to 3 of an original 1 to 4 form a shorter chain that verifies perfectly.
+    # That is the deletion someone would actually make, because the most recent predictions are the ones
+    # that have just been proved wrong.
+    #
+    # The sequence generator is the check. Postgres only advances it, so it remembers the highest sequence
+    # ever issued even after the row is gone. If it has issued more than the table holds, entries were
+    # removed from the end.
+    #
+    # This is evidence, not proof: someone with the right to run setval can rewind the counter, and
+    # someone who can do that can do anything. Detecting the deletion is what matters, and the external
+    # anchor in ``daily_root`` is what makes it undeniable.
+    issued = (
+        conn.execute(text("SELECT last_value, is_called FROM ledger_entry_seq_seq"))
+        .mappings()
+        .first()
+    )
+
+    if issued is not None and issued["is_called"]:
+        highest_issued = int(issued["last_value"])
+        highest_present = int(rows[-1].seq) if rows else 0
+        if highest_present < highest_issued:
+            report.ok = False
+            report.broken_at = highest_present + 1
+            missing = highest_issued - highest_present
+            report.reason = (
+                f"the ledger holds {report.entries} entries ending at sequence {highest_present}, but "
+                f"sequence {highest_issued} has been issued. {missing} entry or entries were deleted "
+                "from the end of the chain."
+            )
+            return report
+
     return report
 
 

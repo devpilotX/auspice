@@ -18,6 +18,27 @@ from sqlalchemy import Connection, text
 from auspice.config import get_settings
 
 
+@pytest.fixture(autouse=True)
+def _fresh_rate_limiter() -> Iterator[None]:
+    """Give every test its own rate limit allowance.
+
+    The limiter is one object in the process, which is the point of it in production and a problem in a test
+    run: a test that floods a public endpoint to prove the limit works leaves the bucket empty, and the next
+    test to touch the API gets a 429 that has nothing to do with what it is testing. That happened, and it
+    presented as an unrelated tile test failing only when the whole suite ran.
+
+    Cleared rather than disabled. Switching the limiter off in tests would mean the middleware is never
+    exercised by anything except its own tests, and the thing worth knowing is that it sits in the real
+    request path without breaking the real endpoints.
+    """
+    from app.ratelimit import limiter
+
+    limiter.buckets.clear()
+    limiter.last_sweep = 0.0
+    yield
+    limiter.buckets.clear()
+
+
 def _test_database_available() -> bool:
     try:
         return get_settings().test_database_url is not None

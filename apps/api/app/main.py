@@ -26,6 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from app import ratelimit
 from app.deps import Db
 from app.routers import public, score, tiles
 from app.schemas import HealthResponse
@@ -108,6 +109,20 @@ app.add_middleware(
 
 
 @app.middleware("http")
+async def rate_limit(request: Request, call_next: Any) -> Any:
+    """Refuse a client that is asking faster than the endpoint allows.
+
+    First in the chain, ahead of the header stamping below, so a refused request costs a dictionary lookup
+    rather than a database round trip. The whole point is to spend nothing on traffic being refused.
+    """
+    retry_after = await ratelimit.enforce(request)
+    if retry_after is not None:
+        body, headers = ratelimit.refusal(request.url.path, retry_after)
+        return JSONResponse(status_code=429, content=body, headers=headers)
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def add_standard_headers(request: Request, call_next: Any) -> Any:
     """Stamp every response with the version, the disclaimer and the data date.
 
@@ -156,9 +171,12 @@ async def healthz(request: Request, conn: Db) -> HealthResponse:
     database = True
     try:
         conn.execute(text("SELECT 1"))
-    except Exception as exc:
-        database = False
-        detail.append(f"database unreachable: {exc}")
+    except Exception:
+        # The driver's message names the user, host and port, and this endpoint is unauthenticated. That
+        # is infrastructure disclosure for no benefit: a monitor needs to know the database is down, and
+        # an operator reads the reason in the log where it belongs.
+        log.exception("health check could not reach the database")
+        detail.append("database unreachable")
 
     chain_ok: bool | None = None
     if database:

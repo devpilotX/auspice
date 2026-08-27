@@ -98,6 +98,13 @@ class Settings(BaseSettings):
     middleware.
     """
     api_keys: str = ""
+    api_trust_forwarded_for: bool = False
+    """Whether to believe the X-Forwarded-For header when rate limiting.
+
+    Off by default, and that default matters. A client sets that header freely, so trusting it without a
+    proxy in front hands anyone an unlimited allowance by rotating a string. Turn it on only when something
+    upstream is guaranteed to overwrite it.
+    """
 
     # -- Ledger ------------------------------------------------------------
     ledger_path: Path = Path("data/ledger")

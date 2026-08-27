@@ -42,6 +42,22 @@ _ELLIPSIS = re.compile(r"\s*(?:\.\.\.|\[\s*\.\.\.\s*\])\s*")
 # Fragments shorter than this are not evidence of anything. "the" appears in every document.
 MIN_FRAGMENT_CHARS = 12
 
+# The most text an ellipsis may stand in for, in characters.
+#
+# Without a bound, piecewise verification is a stitching tool rather than a citation check. Two fragments
+# from opposite ends of a fifty page document both appear, both clear the length floor, and both are in
+# order, so a quote assembled from unrelated statements verifies and reads as one coherent sentence. Found
+# by probing the verifier with "A motion to approve the rezoning ... hereby denied without prejudice"
+# against a document where those spans are three sentences apart and describe different things.
+#
+# An ellipsis in a real citation elides a clause or a parenthetical. 400 characters is roughly two long
+# sentences, which covers the legitimate case and refuses the fabricated one. It is a threshold, so it is
+# named here rather than buried in the loop.
+MAX_ELIDED_GAP_CHARS = 400
+
+# Fragments must also come from the same page. A quote cannot span a page break and remain one quotation,
+# and a document's pages are frequently unrelated to each other.
+
 
 @dataclass(frozen=True, slots=True)
 class QuoteLocation:
@@ -74,10 +90,11 @@ def verify_quote(parsed: ParsedDocument, quote: str) -> VerificationResult:
         page, start, end = found
         return VerificationResult(True, QuoteLocation(page, start, end))
 
-    # Elided quote: every fragment must appear, in order, and each fragment must carry weight.
+    # Elided quote: every fragment must appear, in order, close together, and on one page.
     cursor = 0
     first_start: int | None = None
     last_end = 0
+    first_page: int | None = None
     for fragment in fragments:
         if len(fragment) < MIN_FRAGMENT_CHARS:
             return VerificationResult(
@@ -86,9 +103,23 @@ def verify_quote(parsed: ParsedDocument, quote: str) -> VerificationResult:
         found = parsed.locate(fragment, from_offset=cursor)
         if found is None:
             return VerificationResult(False, None, "an elided fragment was not found in order")
-        _page, start, end = found
+        page, start, end = found
         if first_start is None:
             first_start = start
+            first_page = page
+        elif start - cursor > MAX_ELIDED_GAP_CHARS:
+            # The ellipsis is standing in for more text than an ellipsis can honestly stand in for.
+            return VerificationResult(
+                False,
+                None,
+                f"an ellipsis spans {start - cursor} characters, more than the "
+                f"{MAX_ELIDED_GAP_CHARS} a citation may elide. Fragments this far apart are separate "
+                "statements rather than one quotation.",
+            )
+        if page != first_page:
+            return VerificationResult(
+                False, None, "an elided quote crosses a page boundary, so it is not one quotation"
+            )
         cursor = end
         last_end = end
 

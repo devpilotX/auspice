@@ -10,9 +10,10 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from auspice.domain import Relief, UseClass
+from auspice.pipeline.registry.models import Slug
 from auspice.score.models import Score
 
 
@@ -25,8 +26,21 @@ class ScoreRequest(BaseModel):
     relief_sought: list[Relief] = Field(min_length=1, max_length=8)
     longitude: float | None = Field(default=None, ge=-180, le=180)
     latitude: float | None = Field(default=None, ge=-90, le=90)
-    jurisdiction: str | None = Field(default=None, description="Registry slug, e.g. us-va-loudoun")
-    parcel_ids: list[str] = Field(default_factory=list, max_length=50)
+    jurisdiction: Slug | None = Field(
+        default=None,
+        description="Registry slug, e.g. us-va-loudoun",
+    )
+    """Validated against the registry's own slug type rather than accepted as free text.
+
+    It was `str | None` with no length and no pattern, which meant a caller could send a megabyte where a
+    twenty character slug belongs. Nothing was injectable, because the value is always a bound parameter,
+    but an unbounded input on a public shape is worth closing on its own. Reusing `Slug` also means the API
+    and the registry cannot disagree about what a slug looks like.
+    """
+
+    parcel_ids: list[Annotated[str, StringConstraints(min_length=1, max_length=64)]] = Field(
+        default_factory=list, max_length=50
+    )
     label: str | None = Field(default=None, max_length=120)
     acres: float | None = Field(default=None, gt=0, le=1_000_000)
     capacity_mw: float | None = Field(default=None, gt=0, le=100_000)

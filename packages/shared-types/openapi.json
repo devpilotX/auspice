@@ -1543,6 +1543,9 @@
           "jurisdiction": {
             "anyOf": [
               {
+                "maxLength": 64,
+                "minLength": 8,
+                "pattern": "^[a-z]{2}-[a-z]{2}-[a-z0-9-]+$",
                 "type": "string"
               },
               {
@@ -1592,6 +1595,8 @@
           },
           "parcel_ids": {
             "items": {
+              "maxLength": 64,
+              "minLength": 1,
               "type": "string"
             },
             "maxItems": 50,

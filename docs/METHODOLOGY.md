@@ -253,6 +253,17 @@ has no code path that reaches it.
 - Post approval litigation reversal is tracked but not yet modelled as a distinct risk.
 - Relocation cost in the alternatives ranking is a placeholder of two points per hundred kilometres,
   labelled as a placeholder in the memo, because only the customer knows what moving actually costs.
+- **Point in time features use occurrence dates, not knowledge dates.** History features filter on the date
+  a decision was made and on the date an ordinance was adopted. They do not filter on the date the fact
+  reached our corpus. The `event` table is bi-temporal and the monitor uses it that way, but `application`
+  and `instrument` carry only `created_at`, which records our data entry rather than the county's
+  publication, and the labelled rows were entered by hand long after the decisions they describe.
+
+  What this costs: a backtest is optimistic to the extent that a decision reached us later than the county
+  published it, because the model is credited with knowledge it would not have had. County minutes are
+  usually published within days of a meeting, so the gap is small, and it is not zero. Closing it means
+  giving each row a published-on date read from the source document. Until that exists, treat every
+  backtest figure as a mild upper bound rather than an unbiased estimate.
 
 ## Things we will never do
 

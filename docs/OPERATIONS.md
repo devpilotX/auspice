@@ -118,6 +118,38 @@ A break means an entry was edited or deleted. Find out how before restoring anyt
 does not explain the break leaves the same hole open. The chain is verifiable from the published export, so
 an independent copy is the reference.
 
+## Rate limits, and where they stop working
+
+`apps/api/app/ratelimit.py` holds a token bucket per client in the process. It exists because every
+unauthenticated endpoint does real work: the accuracy page verifies the whole ledger, `locate` runs a
+spatial join, and each map tile runs an `ST_AsMVT` over county polygons. Before it, one client in a loop
+could hold the connection pool open and queue every other request behind it.
+
+| Path | Sustained | Burst | Why |
+|---|---|---|---|
+| `/v1/tiles/` | 20 per second | 40 | A map pans in bursts. Forty covers a screen of tiles at any zoom served, and a limit that broke the map would be removed within a week |
+| `/v1/public/` | 5 per second | 20 | Cheap individually, and the accuracy page verifies the ledger, so not free |
+| `/v1/score` | 2 per second | 5 | Each request fits models. One answers a question |
+| `/v1/portfolio` | 0.5 per second | 3 | Up to 500 sites per request, so the request is already the batch |
+| anything else | 10 per second | 20 | A new route gets a limit before someone remembers to give it one |
+
+`/healthz`, `/docs` and `/openapi.json` are never limited. A health check that can be throttled reports an
+outage during a traffic spike, which is the opposite of useful.
+
+A valid API key is charged to its principal, so one customer cannot exhaust another's allowance and a firm
+behind one office address is not treated as one client. An invalid key falls through to the address, which
+stops anyone minting allowances by inventing a new key each request.
+
+**Where this stops working, stated because it will not be obvious later.** The buckets live in the process.
+Two uvicorn workers means two sets of buckets and twice the allowance, and it is not a defence against a
+distributed source at all, because per-address limiting cannot be. A deployment behind more than one worker
+needs the limit in the reverse proxy or in a shared store. This is the floor, and the floor was worth
+building because what was there before was nothing.
+
+`AUSPICE_API_TRUST_FORWARDED_FOR` is off by default. Turn it on only when something upstream is guaranteed
+to overwrite `X-Forwarded-For`, because a client sets that header freely and trusting it without a proxy
+hands anyone an unlimited allowance.
+
 ## Backups
 
 Nightly `pg_dump` plus WAL archiving to object storage, and a restore tested weekly. An untested backup is
