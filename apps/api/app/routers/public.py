@@ -12,9 +12,9 @@ has already decided what kind of company it is.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import Connection, text
 
 from app.deps import Db
@@ -23,6 +23,8 @@ from app.schemas import (
     FreshnessRow,
     JurisdictionProfile,
     JurisdictionSummary,
+    LocateLink,
+    LocateResponse,
 )
 
 router = APIRouter(prefix="/v1/public", tags=["public"])
@@ -241,6 +243,55 @@ async def jurisdiction_profile(slug: str, conn: Db) -> JurisdictionProfile:
         instruments=[dict(row) for row in instruments],
         bodies=[dict(row) for row in bodies],
         next_elections=[dict(row) for row in elections],
+    )
+
+
+@router.get("/locate", response_model=LocateResponse, summary="Who decides for this coordinate")
+async def locate(
+    conn: Db,
+    longitude: Annotated[float, Query(ge=-180, le=180)],
+    latitude: Annotated[float, Query(ge=-90, le=90)],
+) -> LocateResponse:
+    """Stage 0 on its own: the chain of bodies that can refuse a project at this point.
+
+    Public and unauthenticated like the rest of this router, and safe to be: it reads the boundary index
+    that `auspice registry load` built from published county shapefiles, and returns nothing a visitor
+    could not get from the counties themselves. It is a spatial join with no model fit behind it.
+
+    A point outside the covered counties returns ``covered: false`` with an empty chain rather than a 404,
+    because "we do not cover this place" is a real answer to a reasonable question and a 404 reads as a
+    broken endpoint.
+    """
+    from auspice.pipeline.registry.loader import resolve_chain
+
+    chain = resolve_chain(conn, longitude=longitude, latitude=latitude)
+
+    return LocateResponse(
+        longitude=longitude,
+        latitude=latitude,
+        covered=len(chain) > 0,
+        chain=[
+            LocateLink(
+                slug=str(link["slug"]),
+                name=str(link["name"]),
+                kind=str(link["kind"]),
+                role=str(link["role"]),
+                region=None if link["region"] is None else str(link["region"]),
+                legal_framework=(
+                    None if link["legal_framework"] is None else str(link["legal_framework"])
+                ),
+                data_depth=int(link["data_depth"]),
+                discretion_index=(
+                    None if link["discretion_index"] is None else float(link["discretion_index"])
+                ),
+            )
+            for link in chain
+        ],
+        note=(
+            "The smallest containing jurisdiction decides. The rest can withhold a clearance."
+            if chain
+            else "This point is outside the twelve counties we cover. We hold no decision record for it."
+        ),
     )
 
 

@@ -255,6 +255,62 @@ class TestServedVersionIsTheModelVersion:
         assert models.primary_version == BASE_RATE
 
 
+class TestTheApiPermitsTheOriginTheWebAppUses:
+    """CORS and the web app's own default have to name the same origin.
+
+    They did not. The API allowed http://localhost:3000 while the interface's default base URL is
+    http://127.0.0.1:8000 and it is served from http://127.0.0.1:3000, which a browser treats as a
+    different origin. Every real cross origin request failed and the page reported that the API did not
+    answer while the API was running and healthy.
+
+    It survived because the browser tests stubbed the API at the network layer, so nothing crossed the
+    origin boundary until a coordinate lookup did. That is the lesson worth keeping: a stub proves the
+    interface handles a shape, never that the request is allowed to happen.
+    """
+
+    def test_both_loopback_spellings_are_allowed(self) -> None:
+        from auspice.config import get_settings
+
+        origins = get_settings().cors_origin_list
+        assert "http://127.0.0.1:3000" in origins
+        assert "http://localhost:3000" in origins
+
+    def test_a_preflight_from_the_web_origin_succeeds(self) -> None:
+        """Asserted through the app rather than against the setting, because the middleware is the thing
+        that decides. A correct setting wired up wrongly would pass the check above."""
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+
+        with TestClient(app) as client:
+            response = client.options(
+                "/v1/public/locate",
+                headers={
+                    "Origin": "http://127.0.0.1:3000",
+                    "Access-Control-Request-Method": "GET",
+                },
+            )
+        assert response.status_code == 200, response.text
+        assert response.headers.get("access-control-allow-origin") == "http://127.0.0.1:3000"
+
+    def test_an_unknown_origin_is_not_allowed(self) -> None:
+        """The permission is specific. A wildcard would make the setting decorative."""
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+
+        with TestClient(app) as client:
+            response = client.options(
+                "/v1/public/locate",
+                headers={
+                    "Origin": "https://not-us.example",
+                    "Access-Control-Request-Method": "GET",
+                },
+            )
+        assert response.headers.get("access-control-allow-origin") != "*"
+        assert response.headers.get("access-control-allow-origin") != "https://not-us.example"
+
+
 class TestPublishedMethodologyMatchesTheCode:
     """The published rule and the enforced rule have to be the same rule.
 

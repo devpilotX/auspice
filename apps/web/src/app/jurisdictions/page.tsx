@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Label, Rule, StatusDot, Unavailable } from "@/components/primitives";
+import { SiteSearch } from "@/components/site-search";
 import { api } from "@/lib/api";
 
 export const metadata = {
@@ -60,6 +61,17 @@ export default async function JurisdictionsPage() {
           of the two figures.
         </p>
       </section>
+
+      <Rule strong />
+
+      <SiteSearch
+        jurisdictions={jurisdictions.map((entry) => ({
+          slug: entry.slug,
+          name: entry.name,
+          region: entry.region,
+          data_depth: entry.data_depth,
+        }))}
+      />
 
       <Rule strong />
 

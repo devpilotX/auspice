@@ -84,7 +84,19 @@ class Settings(BaseSettings):
     # -- API ---------------------------------------------------------------
     api_host: str = "127.0.0.1"
     api_port: int = 8000
-    api_cors_origins: str = "http://localhost:3000"
+    api_cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    """Origins the browser may call the API from.
+
+    Both spellings of the loopback address, because they are the same server and a browser treats them as
+    different origins. The default was localhost only while the web app's own default base URL is
+    127.0.0.1, so every real cross origin request from the interface failed the same way: the page said the
+    API did not answer while the API was running and healthy.
+
+    Nothing caught it for a while because the browser tests stubbed the API at the network layer, so the
+    first request to actually cross the origin boundary was the coordinate lookup in site search. Two
+    defaults that have to agree and did not, which is the same shape as the connect-src bug in the web
+    middleware.
+    """
     api_keys: str = ""
 
     # -- Ledger ------------------------------------------------------------

@@ -164,6 +164,52 @@ class JurisdictionSummary(BaseModel):
     hours_since_refresh: float | None
 
 
+class LocateLink(BaseModel):
+    """One link in the chain of bodies that can say no to a parcel.
+
+    Named for its endpoint rather than `JurisdictionLink`, which already exists in
+    `auspice.score.models`. Two schemas with one name make FastAPI disambiguate both by full module path,
+    which renames the existing one in the OpenAPI document and breaks every consumer that referenced it.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    slug: str
+    name: str
+    kind: str
+    role: str
+    region: str | None
+    legal_framework: str | None
+    data_depth: int
+    discretion_index: float | None
+
+
+class LocateResponse(BaseModel):
+    """Who decides for a coordinate. The stage 0 question, answered on its own.
+
+    Separate from scoring on purpose. "Which bodies can say no to this parcel" is useful before anyone
+    asks for a probability, it is the honest answer for a site outside the covered counties, and it is
+    cheap: a spatial join rather than a model fit.
+
+    ``covered`` is false rather than the response being a 404, because a point in an uncovered county is a
+    valid question with a real answer. Returning nothing found would read as a malfunction.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    longitude: float
+    latitude: float
+    covered: bool
+    chain: list[LocateLink]
+    note: str
+
+    @model_validator(mode="after")
+    def covered_means_a_chain(self) -> LocateResponse:
+        if self.covered != (len(self.chain) > 0):
+            raise ValueError("covered must say whether the chain resolved, not something else")
+        return self
+
+
 class JurisdictionProfile(BaseModel):
     """The public jurisdiction profile. Indexed, no login. Section 10.4."""
 

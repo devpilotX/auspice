@@ -332,11 +332,15 @@ export async function get<T>(
   let response: Response;
   try {
     response = await fetch(`${BASE_URL}${path}`, {
+      // The accuracy record and the profiles are public and change slowly. Sixty seconds keeps the page
+      // fast without ever showing a number that is more than a minute behind the ledger.
+      //
+      // Spread after the default rather than before it, so a caller can opt out. Next rejects a request
+      // carrying both `cache: "no-store"` and `next.revalidate`, so the two have to be exclusive rather
+      // than merged, which is why the default is dropped whenever a cache mode is given.
+      ...(init?.cache === undefined ? { next: { revalidate: 60 } } : {}),
       ...init,
       headers,
-      // The accuracy record and the profiles are public and change slowly. Sixty seconds keeps the
-      // page fast without ever showing a number that is more than a minute behind the ledger.
-      next: { revalidate: 60 },
     });
   } catch {
     return null;
@@ -426,6 +430,36 @@ async function detailOf(response: Response): Promise<string> {
   }
 }
 
+export const locateLinkSchema = z.object({
+  slug: z.string(),
+  name: z.string(),
+  kind: z.string(),
+  role: z.string(),
+  region: z.string().nullable(),
+  legal_framework: z.string().nullable(),
+  data_depth: z.number().int().nonnegative(),
+  discretion_index: probability.nullable(),
+});
+
+export const locateSchema = z
+  .object({
+    longitude: z.number().min(-180).max(180),
+    latitude: z.number().min(-90).max(90),
+    covered: z.boolean(),
+    chain: z.array(locateLinkSchema),
+    note: z.string(),
+  })
+  // The API asserts this too. Checked again because a response claiming coverage with nothing in the chain
+  // would render as "one body decides here" above an empty list, which reads as a rendering fault rather
+  // than as the data problem it is.
+  .refine((value) => value.covered === value.chain.length > 0, {
+    message: "covered must agree with whether the chain resolved",
+    path: ["covered"],
+  });
+
+export type LocateResult = z.infer<typeof locateSchema>;
+export type LocateLink = z.infer<typeof locateLinkSchema>;
+
 export const api = {
   accuracy: () => get("/v1/public/accuracy", accuracySchema),
   jurisdictions: () => get("/v1/public/jurisdictions", z.array(jurisdictionSummarySchema)),
@@ -433,4 +467,14 @@ export const api = {
     get(`/v1/public/jurisdictions/${slug}`, jurisdictionProfileSchema),
   methodology: () => get("/v1/public/methodology", z.record(z.string(), z.unknown())),
   portfolio: (sites: SiteInput[]) => post("/v1/portfolio", { sites }, portfolioResponseSchema),
+  locate: (longitude: number, latitude: number) =>
+    get(
+      `/v1/public/locate?longitude=${encodeURIComponent(longitude)}&latitude=${encodeURIComponent(
+        latitude,
+      )}`,
+      locateSchema,
+      // A coordinate lookup is a fresh question every time. Caching it for a minute would answer a
+      // different point from the one that was asked about, since the query string is the whole request.
+      { cache: "no-store" },
+    ),
 };

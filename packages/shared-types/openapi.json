@@ -839,6 +839,113 @@
         "title": "JurisdictionSummary",
         "type": "object"
       },
+      "LocateLink": {
+        "description": "One link in the chain of bodies that can say no to a parcel.\n\nNamed for its endpoint rather than `JurisdictionLink`, which already exists in\n`auspice.score.models`. Two schemas with one name make FastAPI disambiguate both by full module path,\nwhich renames the existing one in the OpenAPI document and breaks every consumer that referenced it.",
+        "properties": {
+          "data_depth": {
+            "title": "Data Depth",
+            "type": "integer"
+          },
+          "discretion_index": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discretion Index"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "legal_framework": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legal Framework"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "kind",
+          "role",
+          "region",
+          "legal_framework",
+          "data_depth",
+          "discretion_index"
+        ],
+        "title": "LocateLink",
+        "type": "object"
+      },
+      "LocateResponse": {
+        "description": "Who decides for a coordinate. The stage 0 question, answered on its own.\n\nSeparate from scoring on purpose. \"Which bodies can say no to this parcel\" is useful before anyone\nasks for a probability, it is the honest answer for a site outside the covered counties, and it is\ncheap: a spatial join rather than a model fit.\n\n``covered`` is false rather than the response being a 404, because a point in an uncovered county is a\nvalid question with a real answer. Returning nothing found would read as a malfunction.",
+        "properties": {
+          "chain": {
+            "items": {
+              "$ref": "#/components/schemas/LocateLink"
+            },
+            "title": "Chain",
+            "type": "array"
+          },
+          "covered": {
+            "title": "Covered",
+            "type": "boolean"
+          },
+          "latitude": {
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "title": "Longitude",
+            "type": "number"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "longitude",
+          "latitude",
+          "covered",
+          "chain",
+          "note"
+        ],
+        "title": "LocateResponse",
+        "type": "object"
+      },
       "Mitigation": {
         "additionalProperties": false,
         "properties": {
@@ -1936,6 +2043,62 @@
           }
         },
         "summary": "The full prediction ledger, newline delimited JSON",
+        "tags": [
+          "public"
+        ]
+      }
+    },
+    "/v1/public/locate": {
+      "get": {
+        "description": "Stage 0 on its own: the chain of bodies that can refuse a project at this point.\n\nPublic and unauthenticated like the rest of this router, and safe to be: it reads the boundary index\nthat `auspice registry load` built from published county shapefiles, and returns nothing a visitor\ncould not get from the counties themselves. It is a spatial join with no model fit behind it.\n\nA point outside the covered counties returns ``covered: false`` with an empty chain rather than a 404,\nbecause \"we do not cover this place\" is a real answer to a reasonable question and a 404 reads as a\nbroken endpoint.",
+        "operationId": "locate_v1_public_locate_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "longitude",
+            "required": true,
+            "schema": {
+              "maximum": 180,
+              "minimum": -180,
+              "title": "Longitude",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "latitude",
+            "required": true,
+            "schema": {
+              "maximum": 90,
+              "minimum": -90,
+              "title": "Latitude",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Who decides for this coordinate",
         "tags": [
           "public"
         ]
