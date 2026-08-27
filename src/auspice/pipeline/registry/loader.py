@@ -22,7 +22,7 @@ from sqlalchemy.engine import Connection
 
 from auspice.config import get_settings
 from auspice.db import schema
-from auspice.domain import CivicPlatform, DISCRETIONARY_RELIEF, Relief
+from auspice.domain import DISCRETIONARY_RELIEF, CivicPlatform, Relief
 from auspice.logging import get_logger
 from auspice.pipeline.registry.boundaries import fetch_county_boundary
 from auspice.pipeline.registry.elections import derive_elections
@@ -125,13 +125,17 @@ def _upsert_jurisdiction(
         conn.execute(
             update(schema.jurisdiction)
             .where(schema.jurisdiction.c.id == jurisdiction_id)
-            .values(boundary=text("ST_Multi(ST_GeomFromEWKT(:ewkt))").bindparams(ewkt=boundary_ewkt))
+            .values(
+                boundary=text("ST_Multi(ST_GeomFromEWKT(:ewkt))").bindparams(ewkt=boundary_ewkt)
+            )
         )
 
     return int(jurisdiction_id)
 
 
-def _load_bodies(conn: Connection, jurisdiction_id: int, spec: JurisdictionSpec, report: LoadReport) -> None:
+def _load_bodies(
+    conn: Connection, jurisdiction_id: int, spec: JurisdictionSpec, report: LoadReport
+) -> None:
     today = date.today()
     horizon_start = date(today.year - HORIZON_BACK_YEARS, 1, 1)
     horizon_end = date(today.year + HORIZON_FORWARD_YEARS, 12, 31)
@@ -201,7 +205,13 @@ def _load_bodies(conn: Connection, jurisdiction_id: int, spec: JurisdictionSpec,
         report.elections += len(dates)
 
 
-def _load_sources(conn: Connection, jurisdiction_id: int, spec: JurisdictionSpec, platform: str, report: LoadReport) -> None:
+def _load_sources(
+    conn: Connection,
+    jurisdiction_id: int,
+    spec: JurisdictionSpec,
+    platform: str,
+    report: LoadReport,
+) -> None:
     for source_spec in spec.sources:
         resolved_platform = (
             source_spec.platform.value
@@ -269,7 +279,7 @@ def load(
                     boundary_ewkt = boundary.as_ewkt()
                     land_area = boundary.land_area_sq_km
                     report.boundaries_loaded += 1
-                except Exception as exc:  # noqa: BLE001 - a missing boundary is recorded, not fatal
+                except Exception as exc:
                     report.boundaries_missing.append(spec.slug)
                     log.warning("boundary unavailable", slug=spec.slug, error=str(exc))
 
@@ -353,9 +363,10 @@ def resolve_chain(conn: Connection, longitude: float, latitude: float) -> list[d
     is the query that makes or breaks everything downstream, so it lives here rather than
     being written inline wherever it is needed.
     """
-    rows = conn.execute(
-        text(
-            """
+    rows = (
+        conn.execute(
+            text(
+                """
             SELECT
                 j.id,
                 j.slug,
@@ -371,8 +382,11 @@ def resolve_chain(conn: Connection, longitude: float, latitude: float) -> list[d
               AND ST_Intersects(j.boundary, ST_SetSRID(ST_Point(:lon, :lat), 4326))
             ORDER BY area_sq_m ASC
             """
-        ).bindparams(lon=longitude, lat=latitude)
-    ).mappings().all()
+            ).bindparams(lon=longitude, lat=latitude)
+        )
+        .mappings()
+        .all()
+    )
 
     return [
         {
@@ -383,7 +397,9 @@ def resolve_chain(conn: Connection, longitude: float, latitude: float) -> list[d
             "region": row["region"],
             "legal_framework": row["legal_framework"],
             "data_depth": row["data_depth"],
-            "discretion_index": float(row["discretion_index"]) if row["discretion_index"] is not None else None,
+            "discretion_index": float(row["discretion_index"])
+            if row["discretion_index"] is not None
+            else None,
             # The smallest containing jurisdiction is the primary decider in every case in the
             # first twelve counties. Where that is not true the registry records it explicitly.
             "role": "primary_decider" if index == 0 else "clearance",
@@ -394,30 +410,34 @@ def resolve_chain(conn: Connection, longitude: float, latitude: float) -> list[d
 
 def registry_summary(conn: Connection) -> list[dict[str, object]]:
     """One row per jurisdiction, for `auspice registry status`."""
-    rows = conn.execute(
-        select(
-            schema.jurisdiction.c.slug,
-            schema.jurisdiction.c.name,
-            schema.jurisdiction.c.region,
-            schema.jurisdiction.c.legal_framework,
-            schema.jurisdiction.c.civic_platform,
-            schema.jurisdiction.c.data_depth,
-            schema.jurisdiction.c.discretion_index,
-            schema.jurisdiction.c.boundary.isnot(None).label("has_boundary"),
-            select(func.count())
-            .select_from(schema.decision_body)
-            .where(schema.decision_body.c.jurisdiction_id == schema.jurisdiction.c.id)
-            .scalar_subquery()
-            .label("bodies"),
-            select(func.count())
-            .select_from(schema.election)
-            .join(
-                schema.decision_body,
-                schema.decision_body.c.id == schema.election.c.body_id,
-            )
-            .where(schema.decision_body.c.jurisdiction_id == schema.jurisdiction.c.id)
-            .scalar_subquery()
-            .label("elections"),
-        ).order_by(schema.jurisdiction.c.slug)
-    ).mappings().all()
+    rows = (
+        conn.execute(
+            select(
+                schema.jurisdiction.c.slug,
+                schema.jurisdiction.c.name,
+                schema.jurisdiction.c.region,
+                schema.jurisdiction.c.legal_framework,
+                schema.jurisdiction.c.civic_platform,
+                schema.jurisdiction.c.data_depth,
+                schema.jurisdiction.c.discretion_index,
+                schema.jurisdiction.c.boundary.isnot(None).label("has_boundary"),
+                select(func.count())
+                .select_from(schema.decision_body)
+                .where(schema.decision_body.c.jurisdiction_id == schema.jurisdiction.c.id)
+                .scalar_subquery()
+                .label("bodies"),
+                select(func.count())
+                .select_from(schema.election)
+                .join(
+                    schema.decision_body,
+                    schema.decision_body.c.id == schema.election.c.body_id,
+                )
+                .where(schema.decision_body.c.jurisdiction_id == schema.jurisdiction.c.id)
+                .scalar_subquery()
+                .label("elections"),
+            ).order_by(schema.jurisdiction.c.slug)
+        )
+        .mappings()
+        .all()
+    )
     return [dict(row) for row in rows]

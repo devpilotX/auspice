@@ -47,7 +47,9 @@ class Usage:
     output_tokens: int = 0
 
     def __add__(self, other: Usage) -> Usage:
-        return Usage(self.input_tokens + other.input_tokens, self.output_tokens + other.output_tokens)
+        return Usage(
+            self.input_tokens + other.input_tokens, self.output_tokens + other.output_tokens
+        )
 
 
 @dataclass(slots=True)
@@ -89,7 +91,9 @@ class LanguageModel:
     label classification, which is roughly ninety percent of the volume.
     """
 
-    def __init__(self, settings: Settings | None = None, *, client: httpx.Client | None = None) -> None:
+    def __init__(
+        self, settings: Settings | None = None, *, client: httpx.Client | None = None
+    ) -> None:
         self.settings = settings or get_settings()
         self._owns_client = client is None
         self._client = client or httpx.Client(timeout=180.0, follow_redirects=False)
@@ -172,7 +176,9 @@ class LanguageModel:
 
             found = sorted(validator.iter_errors(payload), key=lambda e: list(e.path))
             if not found:
-                return Completion(payload=payload, usage=total, model=model, attempts=attempt, raw=raw)
+                return Completion(
+                    payload=payload, usage=total, model=model, attempts=attempt, raw=raw
+                )
 
             errors = [f"{'.'.join(str(p) for p in e.path) or 'root'}: {e.message}" for e in found]
             log.warning("schema violation", attempt=attempt, problems=errors[:4])
@@ -317,7 +323,7 @@ def _extract_json(raw: dict[str, Any]) -> dict[str, Any]:
     if "_tool_input" in raw:
         payload = raw["_tool_input"]
         if not isinstance(payload, dict):
-            raise ValueError("tool input was not an object")
+            raise TypeError("tool input was not an object")
         return payload
 
     text = str(raw.get("_text", "")).strip()
@@ -334,5 +340,5 @@ def _extract_json(raw: dict[str, Any]) -> dict[str, Any]:
     except json.JSONDecodeError as exc:
         raise ValueError(f"model output was not valid JSON: {exc}") from exc
     if not isinstance(parsed, dict):
-        raise ValueError("model output was valid JSON but not an object")
+        raise TypeError("model output was valid JSON but not an object")
     return parsed

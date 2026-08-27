@@ -43,7 +43,7 @@ from tenacity import (
 
 from auspice.config import Settings, get_settings
 from auspice.db import schema
-from auspice.errors import ConfigurationError, FetchError, RateLimitedError, RobotsDisallowedError
+from auspice.errors import ConfigurationError, FetchError, RateLimitedError
 from auspice.logging import get_logger
 from auspice.pipeline.ingest.store import RawStore, StoredObject, get_raw_store
 
@@ -92,7 +92,11 @@ class RobotsCache:
             # No robots.txt means no restrictions. That is the standard reading.
             return None
         if response.status_code >= 400:
-            log.debug("robots returned an error, treating as permissive", origin=origin, status=response.status_code)
+            log.debug(
+                "robots returned an error, treating as permissive",
+                origin=origin,
+                status=response.status_code,
+            )
             return None
         parser.parse(response.text.splitlines())
         return parser
@@ -455,9 +459,10 @@ def freshness_report(conn: Connection) -> list[dict[str, Any]]:
     Section 6.12: stale data is the real outage in this business, and silent staleness is the
     fastest way to lose the one asset that matters.
     """
-    rows = conn.execute(
-        text(
-            """
+    rows = (
+        conn.execute(
+            text(
+                """
             SELECT
                 j.slug,
                 s.kind,
@@ -487,6 +492,9 @@ def freshness_report(conn: Connection) -> list[dict[str, Any]]:
                 END,
                 j.slug
             """
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
     return [dict(row) for row in rows]

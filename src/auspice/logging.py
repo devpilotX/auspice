@@ -32,13 +32,17 @@ def _add_stage(_logger: Any, _name: str, event_dict: EventDict) -> EventDict:
 
 
 def configure_logging(*, level: int | str | None = None, force: bool = False) -> None:
-    global _configured
+    # Configure once per process. A module level flag is the standard idiom for this and the
+    # alternative, a class with a singleton, buys nothing here.
+    global _configured  # noqa: PLW0603
     if _configured and not force:
         return
 
     settings = get_settings()
-    resolved_level = level if level is not None else (
-        logging.DEBUG if settings.env is Environment.development else logging.INFO
+    resolved_level = (
+        level
+        if level is not None
+        else (logging.DEBUG if settings.env is Environment.development else logging.INFO)
     )
 
     shared: list[Processor] = [
@@ -59,7 +63,8 @@ def configure_logging(*, level: int | str | None = None, force: bool = False) ->
     structlog.configure(
         processors=[*shared, renderer],
         wrapper_class=structlog.make_filtering_bound_logger(
-            logging.getLevelName(resolved_level) if isinstance(resolved_level, str)
+            logging.getLevelName(resolved_level)
+            if isinstance(resolved_level, str)
             else resolved_level
         ),
         logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),

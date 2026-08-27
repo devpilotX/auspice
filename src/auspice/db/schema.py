@@ -56,7 +56,6 @@ from auspice.domain import (
     ALERT_TRIGGERS,
     BODY_KINDS,
     CIVIC_PLATFORMS,
-    COMPETING_RISKS,
     CONFIDENCES,
     DOCUMENT_KINDS,
     EVENT_TYPES,
@@ -86,7 +85,9 @@ NAMING_CONVENTION = {
 metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 
-def _one_of(column: str, values: tuple[str, ...], *, name: str, nullable: bool = False) -> CheckConstraint:
+def _one_of(
+    column: str, values: tuple[str, ...], *, name: str, nullable: bool = False
+) -> CheckConstraint:
     """A CHECK constraint generated from a domain enum.
 
     Generating these from the Python enums means the vocabulary cannot drift between the
@@ -168,9 +169,9 @@ jurisdiction = Table(
     _one_of("civic_platform", CIVIC_PLATFORMS, name="platform_vocabulary", nullable=True),
     CheckConstraint(
         "discretion_index IS NULL OR (discretion_index >= 0 AND discretion_index <= 1)",
-        name="ck_jurisdiction_discretion_range",
+        name="discretion_range",
     ),
-    CheckConstraint("data_depth >= 0", name="ck_jurisdiction_data_depth_nonneg"),
+    CheckConstraint("data_depth >= 0", name="data_depth_nonneg"),
 )
 Index("ix_jurisdiction_boundary", jurisdiction.c.boundary, postgresql_using="gist")
 Index("ix_jurisdiction_region_kind", jurisdiction.c.region, jurisdiction.c.kind)
@@ -218,10 +219,8 @@ decision_body = Table(
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=_now),
     UniqueConstraint("jurisdiction_id", "name", name="uq_decision_body_jurisdiction_id_name"),
     _one_of("kind", BODY_KINDS, name="kind_vocabulary"),
-    CheckConstraint("seats IS NULL OR seats > 0", name="ck_decision_body_seats_positive"),
-    CheckConstraint(
-        "quorum IS NULL OR seats IS NULL OR quorum <= seats", name="ck_decision_body_quorum_lte_seats"
-    ),
+    CheckConstraint("seats IS NULL OR seats > 0", name="seats_positive"),
+    CheckConstraint("quorum IS NULL OR seats IS NULL OR quorum <= seats", name="quorum_lte_seats"),
 )
 
 
@@ -229,7 +228,9 @@ decision_maker = Table(
     "decision_maker",
     metadata,
     Column("id", BigInteger, primary_key=True, autoincrement=True),
-    Column("body_id", BigInteger, ForeignKey("decision_body.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "body_id", BigInteger, ForeignKey("decision_body.id", ondelete="CASCADE"), nullable=False
+    ),
     Column("display_name", Text, nullable=False),
     Column(
         "name_variants",
@@ -244,7 +245,7 @@ decision_maker = Table(
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=_now),
     CheckConstraint(
         "term_end IS NULL OR term_start IS NULL OR term_end >= term_start",
-        name="ck_decision_maker_term_ordered",
+        name="term_ordered",
     ),
 )
 Index("ix_decision_maker_body_id", decision_maker.c.body_id)
@@ -260,16 +261,16 @@ election = Table(
     "election",
     metadata,
     Column("id", BigInteger, primary_key=True, autoincrement=True),
-    Column("body_id", BigInteger, ForeignKey("decision_body.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "body_id", BigInteger, ForeignKey("decision_body.id", ondelete="CASCADE"), nullable=False
+    ),
     Column("election_date", Date, nullable=False),
     Column("seats_contested", Integer, nullable=True),
     Column("filing_deadline", Date, nullable=True),
     Column("kind", Text, nullable=True, comment="general, primary, special, runoff"),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=_now),
     UniqueConstraint("body_id", "election_date", name="uq_election_body_id_election_date"),
-    CheckConstraint(
-        "seats_contested IS NULL OR seats_contested >= 0", name="ck_election_seats_nonneg"
-    ),
+    CheckConstraint("seats_contested IS NULL OR seats_contested >= 0", name="seats_nonneg"),
 )
 Index("ix_election_election_date", election.c.election_date)
 
@@ -310,7 +311,7 @@ source = Table(
     UniqueConstraint("jurisdiction_id", "kind", "url", name="uq_source_jurisdiction_id_kind_url"),
     _one_of("kind", DOCUMENT_KINDS, name="kind_vocabulary"),
     _one_of("platform", CIVIC_PLATFORMS, name="platform_vocabulary"),
-    CheckConstraint("refresh_hours > 0", name="ck_source_refresh_positive"),
+    CheckConstraint("refresh_hours > 0", name="refresh_positive"),
 )
 Index("ix_source_enabled_last_success_at", source.c.enabled, source.c.last_success_at)
 
@@ -359,14 +360,19 @@ document = Table(
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=_now),
     _one_of("kind", DOCUMENT_KINDS, name="kind_vocabulary"),
     _one_of("parse_method", PARSE_METHODS, name="parse_method_vocabulary", nullable=True),
-    CheckConstraint("byte_size > 0", name="ck_document_byte_size_positive"),
+    CheckConstraint("byte_size > 0", name="byte_size_positive"),
     CheckConstraint("id ~ '^[0-9a-f]{64}$'", name="ck_document_id_is_sha256"),
     CheckConstraint(
         "legibility IS NULL OR (legibility >= 0 AND legibility <= 1)",
-        name="ck_document_legibility_range",
+        name="legibility_range",
     ),
 )
-Index("ix_document_jurisdiction_id_kind_published_on", document.c.jurisdiction_id, document.c.kind, document.c.published_on)
+Index(
+    "ix_document_jurisdiction_id_kind_published_on",
+    document.c.jurisdiction_id,
+    document.c.kind,
+    document.c.published_on,
+)
 Index("ix_document_source_url", document.c.source_url)
 Index("ix_document_fetched_at", document.c.fetched_at)
 Index(
@@ -397,10 +403,14 @@ fetch_attempt = Table(
     Column("error", Text, nullable=True),
     CheckConstraint(
         "outcome IN ('stored','unchanged','robots_disallowed','http_error','timeout','parse_refused')",
-        name="ck_fetch_attempt_outcome_vocabulary",
+        name="outcome_vocabulary",
     ),
 )
-Index("ix_fetch_attempt_source_id_attempted_at", fetch_attempt.c.source_id, fetch_attempt.c.attempted_at)
+Index(
+    "ix_fetch_attempt_source_id_attempted_at",
+    fetch_attempt.c.source_id,
+    fetch_attempt.c.attempted_at,
+)
 
 
 dead_letter = Table(
@@ -412,7 +422,12 @@ dead_letter = Table(
     Column("jurisdiction_id", BigInteger, ForeignKey("jurisdiction.id"), nullable=True),
     Column("error_type", Text, nullable=False),
     Column("error_message", Text, nullable=False),
-    Column("payload", JSONB, nullable=False, server_default=text("'{}'::jsonb"),),
+    Column(
+        "payload",
+        JSONB,
+        nullable=False,
+        server_default=text("'{}'::jsonb"),
+    ),
     Column("attempts", Integer, nullable=False, server_default=text("1")),
     Column("first_seen_at", DateTime(timezone=True), nullable=False, server_default=_now),
     Column("last_seen_at", DateTime(timezone=True), nullable=False, server_default=_now),
@@ -421,7 +436,7 @@ dead_letter = Table(
     UniqueConstraint("stage", "subject", name="uq_dead_letter_stage_subject"),
     CheckConstraint(
         "stage IN ('ingest','parse','transcribe','extract','resolve','feature','score')",
-        name="ck_dead_letter_stage_vocabulary",
+        name="stage_vocabulary",
     ),
 )
 Index(
@@ -441,7 +456,9 @@ Index(
 document_page = Table(
     "document_page",
     metadata,
-    Column("document_id", String(64), ForeignKey("document.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "document_id", String(64), ForeignKey("document.id", ondelete="CASCADE"), primary_key=True
+    ),
     Column("page", Integer, primary_key=True),
     Column("text", Text, nullable=False),
     Column(
@@ -455,9 +472,9 @@ document_page = Table(
     Column("legibility", Numeric(4, 3), nullable=False),
     Column("escalated", Boolean, nullable=False, server_default=text("false")),
     _one_of("parse_method", PARSE_METHODS, name="parse_method_vocabulary"),
-    CheckConstraint("page >= 1", name="ck_document_page_page_positive"),
-    CheckConstraint("char_end >= char_start", name="ck_document_page_offsets_ordered"),
-    CheckConstraint("legibility >= 0 AND legibility <= 1", name="ck_document_page_legibility_range"),
+    CheckConstraint("page >= 1", name="page_positive"),
+    CheckConstraint("char_end >= char_start", name="offsets_ordered"),
+    CheckConstraint("legibility >= 0 AND legibility <= 1", name="legibility_range"),
 )
 
 
@@ -465,7 +482,9 @@ document_chunk = Table(
     "document_chunk",
     metadata,
     Column("id", BigInteger, primary_key=True, autoincrement=True),
-    Column("document_id", String(64), ForeignKey("document.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "document_id", String(64), ForeignKey("document.id", ondelete="CASCADE"), nullable=False
+    ),
     Column("ordinal", Integer, nullable=False),
     Column(
         "heading",
@@ -481,8 +500,8 @@ document_chunk = Table(
     Column("token_estimate", Integer, nullable=True),
     Column("embedding", Vector(EMBEDDING_DIMENSIONS), nullable=True),
     UniqueConstraint("document_id", "ordinal", name="uq_document_chunk_document_id_ordinal"),
-    CheckConstraint("char_end > char_start", name="ck_document_chunk_offsets_ordered"),
-    CheckConstraint("page_end >= page_start", name="ck_document_chunk_pages_ordered"),
+    CheckConstraint("char_end > char_start", name="offsets_ordered"),
+    CheckConstraint("page_end >= page_start", name="pages_ordered"),
 )
 Index(
     "ix_document_chunk_embedding_hnsw",
@@ -509,7 +528,9 @@ transcript_segment = Table(
     "transcript_segment",
     metadata,
     Column("id", BigInteger, primary_key=True, autoincrement=True),
-    Column("document_id", String(64), ForeignKey("document.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "document_id", String(64), ForeignKey("document.id", ondelete="CASCADE"), nullable=False
+    ),
     Column("ordinal", Integer, nullable=False),
     Column("start_ms", Integer, nullable=False),
     Column("end_ms", Integer, nullable=False),
@@ -532,8 +553,8 @@ transcript_segment = Table(
     Column("agenda_item", Text, nullable=True),
     Column("confidence", Numeric(4, 3), nullable=True),
     UniqueConstraint("document_id", "ordinal", name="uq_transcript_segment_document_id_ordinal"),
-    CheckConstraint("end_ms >= start_ms", name="ck_transcript_segment_time_ordered"),
-    CheckConstraint("char_end >= char_start", name="ck_transcript_segment_offsets_ordered"),
+    CheckConstraint("end_ms >= start_ms", name="time_ordered"),
+    CheckConstraint("char_end >= char_start", name="offsets_ordered"),
 )
 Index("ix_transcript_segment_maker_id", transcript_segment.c.maker_id)
 Index(
@@ -552,7 +573,9 @@ extraction_run = Table(
     "extraction_run",
     metadata,
     Column("id", BigInteger, primary_key=True, autoincrement=True),
-    Column("document_id", String(64), ForeignKey("document.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "document_id", String(64), ForeignKey("document.id", ondelete="CASCADE"), nullable=False
+    ),
     Column(
         "cache_key",
         String(64),
@@ -581,7 +604,7 @@ extraction_run = Table(
     UniqueConstraint("cache_key", "pass_number", name="uq_extraction_run_cache_key_pass_number"),
     CheckConstraint(
         "status IN ('ok','schema_violation','quote_unverified','refused','provider_error','disagreement')",
-        name="ck_extraction_run_status_vocabulary",
+        name="status_vocabulary",
     ),
 )
 Index("ix_extraction_run_document_id", extraction_run.c.document_id)
@@ -611,14 +634,18 @@ fact_evidence = Table(
     ),
     Column("verified_at", DateTime(timezone=True), nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=_now),
-    CheckConstraint("length(quote) BETWEEN 1 AND 500", name="ck_fact_evidence_quote_length"),
+    CheckConstraint("length(quote) BETWEEN 1 AND 500", name="quote_length"),
     CheckConstraint(
         "subject_table IN ('application','instrument','objection','decision_maker','vote',"
         "'jurisdiction','decision_body','election','parcel')",
-        name="ck_fact_evidence_subject_table_vocabulary",
+        name="subject_table_vocabulary",
     ),
 )
-Index("ix_fact_evidence_subject_table_subject_id", fact_evidence.c.subject_table, fact_evidence.c.subject_id)
+Index(
+    "ix_fact_evidence_subject_table_subject_id",
+    fact_evidence.c.subject_table,
+    fact_evidence.c.subject_id,
+)
 Index("ix_fact_evidence_document_id", fact_evidence.c.document_id)
 Index(
     "ix_fact_evidence_unverified",
@@ -646,9 +673,7 @@ entity_cluster = Table(
     ),
     Column("opaque", Boolean, nullable=False, server_default=text("false")),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=_now),
-    CheckConstraint(
-        "kind IN ('applicant','owner','objection_group')", name="ck_entity_cluster_kind_vocabulary"
-    ),
+    CheckConstraint("kind IN ('applicant','owner','objection_group')", name="kind_vocabulary"),
 )
 Index(
     "ix_entity_cluster_canonical_name_trgm",
@@ -662,8 +687,18 @@ entity_alias = Table(
     "entity_alias",
     metadata,
     Column("id", BigInteger, primary_key=True, autoincrement=True),
-    Column("cluster_id", BigInteger, ForeignKey("entity_cluster.id", ondelete="CASCADE"), nullable=False),
-    Column("raw_string", Text, nullable=False, comment="Exactly as it appeared. Never normalised in place."),
+    Column(
+        "cluster_id",
+        BigInteger,
+        ForeignKey("entity_cluster.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "raw_string",
+        Text,
+        nullable=False,
+        comment="Exactly as it appeared. Never normalised in place.",
+    ),
     Column("normalised", Text, nullable=False),
     Column("first_seen_document_id", String(64), ForeignKey("document.id"), nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=_now),
@@ -684,7 +719,12 @@ merge_audit = Table(
     Column("entity_kind", Text, nullable=False),
     Column("absorbed_id", BigInteger, nullable=False),
     Column("survivor_id", BigInteger, nullable=False),
-    Column("method", Text, nullable=False, comment="exact, trigram, embedding, llm_adjudication, manual"),
+    Column(
+        "method",
+        Text,
+        nullable=False,
+        comment="exact, trigram, embedding, llm_adjudication, manual",
+    ),
     Column("score", Numeric(5, 4), nullable=True),
     Column("rationale", Text, nullable=True),
     Column("merged_at", DateTime(timezone=True), nullable=False, server_default=_now),
@@ -692,9 +732,9 @@ merge_audit = Table(
     Column("reversed_reason", Text, nullable=True),
     CheckConstraint(
         "method IN ('exact','trigram','embedding','llm_adjudication','manual')",
-        name="ck_merge_audit_method_vocabulary",
+        name="method_vocabulary",
     ),
-    CheckConstraint("absorbed_id <> survivor_id", name="ck_merge_audit_not_self"),
+    CheckConstraint("absorbed_id <> survivor_id", name="not_self"),
 )
 
 
@@ -706,7 +746,12 @@ instrument = Table(
     "instrument",
     metadata,
     Column("id", BigInteger, primary_key=True, autoincrement=True),
-    Column("jurisdiction_id", BigInteger, ForeignKey("jurisdiction.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "jurisdiction_id",
+        BigInteger,
+        ForeignKey("jurisdiction.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
     Column("kind", Text, nullable=False),
     Column("citation", Text, nullable=True),
     Column("title", Text, nullable=True),
@@ -742,11 +787,16 @@ instrument = Table(
     _array_subset("applies_to_use_classes", USE_CLASSES, name="use_classes_vocabulary"),
     CheckConstraint(
         "expires_on IS NULL OR effective_on IS NULL OR expires_on >= effective_on",
-        name="ck_instrument_dates_ordered",
+        name="dates_ordered",
     ),
-    CheckConstraint("supersedes_id IS NULL OR supersedes_id <> id", name="ck_instrument_not_self_superseding"),
+    CheckConstraint("supersedes_id IS NULL OR supersedes_id <> id", name="not_self_superseding"),
 )
-Index("ix_instrument_jurisdiction_id_kind_effective_on", instrument.c.jurisdiction_id, instrument.c.kind, instrument.c.effective_on)
+Index(
+    "ix_instrument_jurisdiction_id_kind_effective_on",
+    instrument.c.jurisdiction_id,
+    instrument.c.kind,
+    instrument.c.effective_on,
+)
 Index(
     "ix_instrument_live_moratorium",
     instrument.c.jurisdiction_id,
@@ -761,12 +811,21 @@ parcel = Table(
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column("jurisdiction_id", BigInteger, ForeignKey("jurisdiction.id"), nullable=True),
     Column("external_id", Text, nullable=True, comment="Assessor parcel number as published"),
-    Column("geom", Geometry(geometry_type="MULTIPOLYGON", srid=4326, spatial_index=False), nullable=False),
+    Column(
+        "geom",
+        Geometry(geometry_type="MULTIPOLYGON", srid=4326, spatial_index=False),
+        nullable=False,
+    ),
     Column("acres", Numeric(12, 3), nullable=True),
     Column("current_zoning", Text, nullable=True),
     Column("overlays", ARRAY(Text), nullable=False, server_default=text("'{}'::text[]")),
     Column("owner_raw", Text, nullable=True),
-    Column("owner_cluster_id", BigInteger, ForeignKey("entity_cluster.id", ondelete="SET NULL"), nullable=True),
+    Column(
+        "owner_cluster_id",
+        BigInteger,
+        ForeignKey("entity_cluster.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
     Column("prior_industrial_use", Boolean, nullable=True),
     Column(
         "valid_from",
@@ -777,8 +836,8 @@ parcel = Table(
     ),
     Column("valid_to", Date, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=_now),
-    CheckConstraint("valid_to IS NULL OR valid_to > valid_from", name="ck_parcel_validity_ordered"),
-    CheckConstraint("acres IS NULL OR acres > 0", name="ck_parcel_acres_positive"),
+    CheckConstraint("valid_to IS NULL OR valid_to > valid_from", name="validity_ordered"),
+    CheckConstraint("acres IS NULL OR acres > 0", name="acres_positive"),
 )
 Index("ix_parcel_geom", parcel.c.geom, postgresql_using="gist")
 Index("ix_parcel_jurisdiction_id_external_id", parcel.c.jurisdiction_id, parcel.c.external_id)
@@ -790,10 +849,19 @@ application = Table(
     metadata,
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column("jurisdiction_id", BigInteger, ForeignKey("jurisdiction.id"), nullable=False),
-    Column("body_id", BigInteger, ForeignKey("decision_body.id", ondelete="SET NULL"), nullable=True),
-    Column("external_id", Text, nullable=True, comment="Case number as the jurisdiction publishes it"),
+    Column(
+        "body_id", BigInteger, ForeignKey("decision_body.id", ondelete="SET NULL"), nullable=True
+    ),
+    Column(
+        "external_id", Text, nullable=True, comment="Case number as the jurisdiction publishes it"
+    ),
     Column("applicant_raw", Text, nullable=True),
-    Column("applicant_cluster_id", BigInteger, ForeignKey("entity_cluster.id", ondelete="SET NULL"), nullable=True),
+    Column(
+        "applicant_cluster_id",
+        BigInteger,
+        ForeignKey("entity_cluster.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
     Column("parcel_id", BigInteger, ForeignKey("parcel.id", ondelete="SET NULL"), nullable=True),
     Column("use_class", Text, nullable=False),
     Column("relief_sought", ARRAY(Text), nullable=False),
@@ -817,8 +885,11 @@ application = Table(
     Column(
         "months_to_decision",
         Numeric(8, 3),
-        Computed("CASE WHEN decided_on IS NOT NULL AND filed_on IS NOT NULL "
-                 "THEN (decided_on - filed_on) / 30.44 END", persisted=True),
+        Computed(
+            "CASE WHEN decided_on IS NOT NULL AND filed_on IS NOT NULL "
+            "THEN (decided_on - filed_on) / 30.44 END",
+            persisted=True,
+        ),
         nullable=True,
     ),
     Column(
@@ -838,33 +909,40 @@ application = Table(
     Column("notes", Text, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=_now),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=_now),
-    UniqueConstraint("jurisdiction_id", "external_id", name="uq_application_jurisdiction_id_external_id"),
+    UniqueConstraint(
+        "jurisdiction_id", "external_id", name="uq_application_jurisdiction_id_external_id"
+    ),
     _one_of("use_class", USE_CLASSES, name="use_class_vocabulary"),
     _one_of("outcome", OUTCOMES, name="outcome_vocabulary"),
     _array_subset("relief_sought", RELIEFS, name="relief_vocabulary"),
-    CheckConstraint("cardinality(relief_sought) >= 1", name="ck_application_relief_not_empty"),
+    CheckConstraint("cardinality(relief_sought) >= 1", name="relief_not_empty"),
     CheckConstraint(
-        "label_source IN ('hand_labelled','extracted')", name="ck_application_label_source_vocabulary"
+        "label_source IN ('hand_labelled','extracted')", name="label_source_vocabulary"
     ),
     CheckConstraint(
         "staff_recommendation IS NULL OR staff_recommendation IN "
         "('approve','approve_with_conditions','deny','none')",
-        name="ck_application_staff_recommendation_vocabulary",
+        name="staff_recommendation_vocabulary",
     ),
     CheckConstraint(
         "decided_on IS NULL OR filed_on IS NULL OR decided_on >= filed_on",
-        name="ck_application_dates_ordered",
+        name="dates_ordered",
     ),
     CheckConstraint(
         "(censored = true) = (outcome IN ('pending','continued','tabled','unknown'))",
-        name="ck_application_censored_matches_outcome",
+        name="censored_matches_outcome",
     ),
     CheckConstraint(
         "outcome NOT IN ('approved','approved_with_conditions','denied') OR decided_on IS NOT NULL",
-        name="ck_application_decided_has_date",
+        name="decided_has_date",
     ),
 )
-Index("ix_application_jurisdiction_id_use_class_decided_on", application.c.jurisdiction_id, application.c.use_class, application.c.decided_on)
+Index(
+    "ix_application_jurisdiction_id_use_class_decided_on",
+    application.c.jurisdiction_id,
+    application.c.use_class,
+    application.c.decided_on,
+)
 Index("ix_application_filed_on", application.c.filed_on)
 Index("ix_application_outcome_decided_on", application.c.outcome, application.c.decided_on)
 Index("ix_application_applicant_cluster_id", application.c.applicant_cluster_id)
@@ -879,8 +957,18 @@ Index(
 vote = Table(
     "vote",
     metadata,
-    Column("application_id", BigInteger, ForeignKey("application.id", ondelete="CASCADE"), primary_key=True),
-    Column("maker_id", BigInteger, ForeignKey("decision_maker.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "application_id",
+        BigInteger,
+        ForeignKey("application.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "maker_id",
+        BigInteger,
+        ForeignKey("decision_maker.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
     Column("position", Text, nullable=False),
     Column("voted_on", Date, nullable=True),
     _one_of("position", VOTE_POSITIONS, name="position_vocabulary"),
@@ -892,11 +980,21 @@ objection = Table(
     "objection",
     metadata,
     Column("id", BigInteger, primary_key=True, autoincrement=True),
-    Column("application_id", BigInteger, ForeignKey("application.id", ondelete="CASCADE"), nullable=True),
+    Column(
+        "application_id",
+        BigInteger,
+        ForeignKey("application.id", ondelete="CASCADE"),
+        nullable=True,
+    ),
     Column("jurisdiction_id", BigInteger, ForeignKey("jurisdiction.id"), nullable=False),
     Column("observed_on", Date, nullable=True),
     Column("organised", Boolean, nullable=True),
-    Column("group_cluster_id", BigInteger, ForeignKey("entity_cluster.id", ondelete="SET NULL"), nullable=True),
+    Column(
+        "group_cluster_id",
+        BigInteger,
+        ForeignKey("entity_cluster.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
     Column("group_name_raw", Text, nullable=True),
     Column("retained_counsel", Boolean, nullable=True),
     Column("grounds", ARRAY(Text), nullable=False, server_default=text("'{}'::text[]")),
@@ -904,9 +1002,11 @@ objection = Table(
     Column("media_mentions", Integer, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=_now),
     _array_subset("grounds", OBJECTION_GROUNDS, name="grounds_vocabulary"),
-    CheckConstraint("speakers IS NULL OR speakers >= 0", name="ck_objection_speakers_nonneg"),
+    CheckConstraint("speakers IS NULL OR speakers >= 0", name="speakers_nonneg"),
 )
-Index("ix_objection_jurisdiction_id_observed_on", objection.c.jurisdiction_id, objection.c.observed_on)
+Index(
+    "ix_objection_jurisdiction_id_observed_on", objection.c.jurisdiction_id, objection.c.observed_on
+)
 Index("ix_objection_application_id", objection.c.application_id)
 
 
@@ -914,10 +1014,24 @@ event = Table(
     "event",
     metadata,
     Column("id", BigInteger, primary_key=True, autoincrement=True),
-    Column("jurisdiction_id", BigInteger, ForeignKey("jurisdiction.id", ondelete="CASCADE"), nullable=False),
-    Column("application_id", BigInteger, ForeignKey("application.id", ondelete="CASCADE"), nullable=True),
-    Column("instrument_id", BigInteger, ForeignKey("instrument.id", ondelete="CASCADE"), nullable=True),
-    Column("body_id", BigInteger, ForeignKey("decision_body.id", ondelete="SET NULL"), nullable=True),
+    Column(
+        "jurisdiction_id",
+        BigInteger,
+        ForeignKey("jurisdiction.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "application_id",
+        BigInteger,
+        ForeignKey("application.id", ondelete="CASCADE"),
+        nullable=True,
+    ),
+    Column(
+        "instrument_id", BigInteger, ForeignKey("instrument.id", ondelete="CASCADE"), nullable=True
+    ),
+    Column(
+        "body_id", BigInteger, ForeignKey("decision_body.id", ondelete="SET NULL"), nullable=True
+    ),
     Column("event_type", Text, nullable=False),
     Column("occurred_on", Date, nullable=False),
     Column(
@@ -930,9 +1044,14 @@ event = Table(
     Column("detail", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=_now),
     _one_of("event_type", EVENT_TYPES, name="event_type_vocabulary"),
-    CheckConstraint("known_from >= occurred_on", name="ck_event_known_after_occurred"),
+    CheckConstraint("known_from >= occurred_on", name="known_after_occurred"),
 )
-Index("ix_event_jurisdiction_id_event_type_known_from", event.c.jurisdiction_id, event.c.event_type, event.c.known_from)
+Index(
+    "ix_event_jurisdiction_id_event_type_known_from",
+    event.c.jurisdiction_id,
+    event.c.event_type,
+    event.c.known_from,
+)
 Index("ix_event_application_id", event.c.application_id)
 
 
@@ -950,8 +1069,8 @@ precedent_link = Table(
         "comparable set, so it has to be legible rather than a bare score.",
     ),
     Column("computed_at", DateTime(timezone=True), nullable=False, server_default=_now),
-    CheckConstraint("similarity >= 0 AND similarity <= 1", name="ck_precedent_link_similarity_range"),
-    CheckConstraint("a_id <> b_id", name="ck_precedent_link_not_self"),
+    CheckConstraint("similarity >= 0 AND similarity <= 1", name="similarity_range"),
+    CheckConstraint("a_id <> b_id", name="not_self"),
 )
 Index("ix_precedent_link_b_id", precedent_link.c.b_id)
 
@@ -960,11 +1079,21 @@ jurisdiction_chain = Table(
     "jurisdiction_chain",
     metadata,
     Column("id", BigInteger, primary_key=True, autoincrement=True),
-    Column("application_id", BigInteger, ForeignKey("application.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "application_id",
+        BigInteger,
+        ForeignKey("application.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
     Column("jurisdiction_id", BigInteger, ForeignKey("jurisdiction.id"), nullable=False),
     Column("role", Text, nullable=False),
     Column("ordinal", Integer, nullable=False),
-    UniqueConstraint("application_id", "jurisdiction_id", "role", name="uq_jurisdiction_chain_application_id_jurisdiction_id_role"),
+    UniqueConstraint(
+        "application_id",
+        "jurisdiction_id",
+        "role",
+        name="uq_jurisdiction_chain_application_id_jurisdiction_id_role",
+    ),
     _one_of("role", JURISDICTION_ROLES, name="role_vocabulary"),
 )
 
@@ -980,7 +1109,12 @@ feature_snapshot = Table(
     "feature_snapshot",
     metadata,
     Column("id", BigInteger, primary_key=True, autoincrement=True),
-    Column("application_id", BigInteger, ForeignKey("application.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "application_id",
+        BigInteger,
+        ForeignKey("application.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
     Column("as_of", Date, nullable=False, comment="Almost always the filing date"),
     Column("feature_set_version", Text, nullable=False),
     Column("features", JSONB, nullable=False),
@@ -992,7 +1126,12 @@ feature_snapshot = Table(
         comment="Named features that could not be computed. Never silently zero filled.",
     ),
     Column("computed_at", DateTime(timezone=True), nullable=False, server_default=_now),
-    UniqueConstraint("application_id", "as_of", "feature_set_version", name="uq_feature_snapshot_application_id_as_of_feature_set_version"),
+    UniqueConstraint(
+        "application_id",
+        "as_of",
+        "feature_set_version",
+        name="uq_feature_snapshot_application_id_as_of_feature_set_version",
+    ),
 )
 Index("ix_feature_snapshot_as_of", feature_snapshot.c.as_of)
 
@@ -1025,9 +1164,11 @@ model_run = Table(
     Column("trained_at", DateTime(timezone=True), nullable=False, server_default=_now),
     Column("promoted_at", DateTime(timezone=True), nullable=True, comment="When it began serving"),
     Column("retired_at", DateTime(timezone=True), nullable=True),
-    UniqueConstraint("kind", "version", "dataset_hash", name="uq_model_run_kind_version_dataset_hash"),
+    UniqueConstraint(
+        "kind", "version", "dataset_hash", name="uq_model_run_kind_version_dataset_hash"
+    ),
     _one_of("kind", MODEL_KINDS, name="kind_vocabulary"),
-    CheckConstraint("n_train >= 0 AND n_test >= 0", name="ck_model_run_counts_nonneg"),
+    CheckConstraint("n_train >= 0 AND n_test >= 0", name="counts_nonneg"),
 )
 Index(
     "ix_model_run_serving",
@@ -1051,7 +1192,12 @@ prediction = Table(
         nullable=False,
         comment="Opaque identifier used in the ledger and in URLs",
     ),
-    Column("application_id", BigInteger, ForeignKey("application.id", ondelete="SET NULL"), nullable=True),
+    Column(
+        "application_id",
+        BigInteger,
+        ForeignKey("application.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
     Column("jurisdiction_id", BigInteger, ForeignKey("jurisdiction.id"), nullable=False),
     Column("site", JSONB, nullable=False, comment="Parcel ids, use class, relief sought, by_right"),
     Column("model_run_id", BigInteger, ForeignKey("model_run.id"), nullable=False),
@@ -1086,32 +1232,36 @@ prediction = Table(
     CheckConstraint(
         "(abstained = true AND approval_probability IS NULL) OR "
         "(abstained = false AND approval_probability IS NOT NULL)",
-        name="ck_prediction_abstention_excludes_probability",
+        name="abstention_excludes_probability",
     ),
     CheckConstraint(
         "abstained = false OR cardinality(abstention_reasons) >= 1",
-        name="ck_prediction_abstention_has_reason",
+        name="abstention_has_reason",
     ),
     CheckConstraint(
         "approval_probability IS NULL OR (approval_probability >= 0 AND approval_probability <= 1)",
-        name="ck_prediction_probability_range",
+        name="probability_range",
     ),
     CheckConstraint(
         "ci80_low IS NULL OR ci80_high IS NULL OR ci80_low <= ci80_high",
-        name="ck_prediction_interval_ordered",
+        name="interval_ordered",
     ),
     CheckConstraint(
         "approval_probability IS NULL OR ci80_low IS NOT NULL",
-        name="ck_prediction_point_estimate_needs_interval",
+        name="point_estimate_needs_interval",
     ),
     CheckConstraint(
         "months_p10 IS NULL OR months_p50 IS NULL OR months_p90 IS NULL OR "
         "(months_p10 <= months_p50 AND months_p50 <= months_p90)",
-        name="ck_prediction_months_ordered",
+        name="months_ordered",
     ),
 )
 Index("ix_prediction_application_id", prediction.c.application_id)
-Index("ix_prediction_jurisdiction_id_created_at", prediction.c.jurisdiction_id, prediction.c.created_at)
+Index(
+    "ix_prediction_jurisdiction_id_created_at",
+    prediction.c.jurisdiction_id,
+    prediction.c.created_at,
+)
 
 
 ledger_entry = Table(
@@ -1143,9 +1293,9 @@ ledger_entry = Table(
     UniqueConstraint("prediction_id", name="uq_ledger_entry_prediction_id"),
     UniqueConstraint("entry_hash", name="uq_ledger_entry_entry_hash"),
     _one_of("resolved_outcome", OUTCOMES, name="resolved_outcome_vocabulary", nullable=True),
-    CheckConstraint("payload_hash ~ '^[0-9a-f]{64}$'", name="ck_ledger_entry_payload_hash_format"),
-    CheckConstraint("entry_hash ~ '^[0-9a-f]{64}$'", name="ck_ledger_entry_entry_hash_format"),
-    CheckConstraint("prev_hash ~ '^[0-9a-f]{64}$'", name="ck_ledger_entry_prev_hash_format"),
+    CheckConstraint("payload_hash ~ '^[0-9a-f]{64}$'", name="payload_hash_format"),
+    CheckConstraint("entry_hash ~ '^[0-9a-f]{64}$'", name="entry_hash_format"),
+    CheckConstraint("prev_hash ~ '^[0-9a-f]{64}$'", name="prev_hash_format"),
 )
 Index("ix_ledger_entry_published_at", ledger_entry.c.published_at)
 Index(
@@ -1165,9 +1315,19 @@ watch = Table(
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column("subscriber", Text, nullable=False, comment="API key label until billing exists"),
     Column("label", Text, nullable=False),
-    Column("jurisdiction_id", BigInteger, ForeignKey("jurisdiction.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "jurisdiction_id",
+        BigInteger,
+        ForeignKey("jurisdiction.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
     Column("site", JSONB, nullable=False),
-    Column("last_prediction_id", BigInteger, ForeignKey("prediction.id", ondelete="SET NULL"), nullable=True),
+    Column(
+        "last_prediction_id",
+        BigInteger,
+        ForeignKey("prediction.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
     Column("active", Boolean, nullable=False, server_default=text("true")),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=_now),
     UniqueConstraint("subscriber", "label", name="uq_watch_subscriber_label"),
@@ -1179,7 +1339,12 @@ change_event = Table(
     "change_event",
     metadata,
     Column("id", BigInteger, primary_key=True, autoincrement=True),
-    Column("jurisdiction_id", BigInteger, ForeignKey("jurisdiction.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "jurisdiction_id",
+        BigInteger,
+        ForeignKey("jurisdiction.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
     Column("trigger", Text, nullable=False),
     Column("detected_on", Date, nullable=False),
     Column("document_id", String(64), ForeignKey("document.id"), nullable=True),
@@ -1195,9 +1360,13 @@ change_event = Table(
     Column("summary", Text, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=_now),
     _one_of("trigger", ALERT_TRIGGERS, name="trigger_vocabulary"),
-    CheckConstraint("materiality >= 0 AND materiality <= 1", name="ck_change_event_materiality_range"),
+    CheckConstraint("materiality >= 0 AND materiality <= 1", name="materiality_range"),
 )
-Index("ix_change_event_jurisdiction_id_detected_on", change_event.c.jurisdiction_id, change_event.c.detected_on)
+Index(
+    "ix_change_event_jurisdiction_id_detected_on",
+    change_event.c.jurisdiction_id,
+    change_event.c.detected_on,
+)
 
 
 alert = Table(
@@ -1205,7 +1374,12 @@ alert = Table(
     metadata,
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column("watch_id", BigInteger, ForeignKey("watch.id", ondelete="CASCADE"), nullable=False),
-    Column("change_event_id", BigInteger, ForeignKey("change_event.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "change_event_id",
+        BigInteger,
+        ForeignKey("change_event.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
     Column("materiality", Numeric(4, 3), nullable=False),
     Column("headline", Text, nullable=False),
     Column("body", Text, nullable=False),

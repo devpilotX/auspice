@@ -129,10 +129,31 @@ select = [
     "RUF",
 ]
 ignore = [
-    "PLR0913",  # too many arguments: statistical functions legitimately take many
-    "PLR2004",  # magic value comparison: thresholds are named in constants where it matters
-    "TRY003",   # long messages outside exception class: we want readable errors
-    "RET504",   # unnecessary assignment before return: named intermediates aid reading
+    # ruff format owns line length for code. E501 then only fires on prose inside comments and
+    # docstrings, where a hard wrap would mean rewriting an explanation to fit a column.
+    "E501",
+    # Deferred imports are deliberate in three places: the CLI, where importing jax at startup would
+    # add seconds to `auspice --help`; optional dependency paths such as boto3 and faster-whisper; and
+    # a few functions that would otherwise create an import cycle. Each one is at the point of use.
+    "PLC0415",
+    # date.today() is correct for a business date. Filing dates, decision dates and election dates are
+    # calendar dates in local civic time, not instants, and attaching a timezone to them would imply a
+    # precision the source documents do not have. Timestamps use datetime.now(UTC) and DTZ005 still
+    # applies to those.
+    "DTZ011",
+    "PLR0913",  # statistical functions legitimately take many arguments
+    "PLR2004",  # thresholds are named constants where it matters; see models/eval/thresholds.py
+    "TRY003",   # long messages outside exception classes: errors should say what to do next
+    "RET504",   # named intermediates aid reading
+    # Complexity limits, relaxed for orchestration only. run_kill_test, extract_document and the label
+    # loader are long because they are sequences: fetch, score, gate, report. Splitting a sequence into
+    # six helpers that are each called once moves the reader between six places to follow one path, and
+    # the reason a step exists stops sitting next to the step. The statistical and parsing functions
+    # elsewhere in the codebase stay short.
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+    "PLR0917",
 ]
 
 [tool.ruff.lint.per-file-ignores]

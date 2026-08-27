@@ -372,7 +372,6 @@ def extract_document(
             _second_pass(
                 conn,
                 model=model,
-                parsed=parsed,
                 items=items,
                 variables=variables,
                 schema_name=schema_name,
@@ -404,7 +403,9 @@ def _land_decision(
     vote = parse_vote(str(item.get("vote") or ""))
 
     case_number = item.get("case_number")
-    external_id = case_number or f"extracted:{document_id[:16]}:{item.get('project_name') or 'unnamed'}"
+    external_id = (
+        case_number or f"extracted:{document_id[:16]}:{item.get('project_name') or 'unnamed'}"
+    )
 
     statement = (
         pg_insert(schema.application)
@@ -512,7 +513,9 @@ def _land_instrument(
                 effective_on=_coerce_date(item.get("effective_on")) or adopted_on,
                 expires_on=_coerce_date(item.get("expires_on")),
                 applies_to_use_classes=item.get("applies_to_use_classes", []),
-                restrictions={k: v for k, v in (item.get("restrictions") or {}).items() if v is not None},
+                restrictions={
+                    k: v for k, v in (item.get("restrictions") or {}).items() if v is not None
+                },
                 full_text_document_id=document_id,
             )
             .returning(schema.instrument.c.id)
@@ -540,7 +543,9 @@ def _land_instrument(
         schema.event.insert().values(
             jurisdiction_id=jurisdiction_id,
             instrument_id=instrument_id,
-            event_type="moratorium_enacted" if item["kind"] == "moratorium" else "ordinance_adopted",
+            event_type="moratorium_enacted"
+            if item["kind"] == "moratorium"
+            else "ordinance_adopted",
             occurred_on=adopted_on,
             known_from=adopted_on,
             detail={"citation": item.get("citation"), "vote": item.get("vote")},
@@ -557,9 +562,7 @@ def _write_event(
     application_id: int | None,
 ) -> None:
     occurred = (
-        _coerce_date(item.get("decided_on"))
-        or _coerce_date(item.get("filed_on"))
-        or date.today()
+        _coerce_date(item.get("decided_on")) or _coerce_date(item.get("filed_on")) or date.today()
     )
     conn.execute(
         schema.event.insert().values(
@@ -581,7 +584,6 @@ def _second_pass(
     conn: Connection,
     *,
     model: LanguageModel,
-    parsed: ParsedDocument,
     items: list[dict[str, Any]],
     variables: dict[str, object],
     schema_name: str,

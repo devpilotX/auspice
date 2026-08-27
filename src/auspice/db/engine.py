@@ -30,17 +30,22 @@ def get_engine(*, test: bool = False) -> Engine:
     settings = get_settings()
     url = settings.sqlalchemy_url(test=test)
 
-    engine = create_engine(
-        url,
-        echo=settings.db_echo,
-        pool_pre_ping=True,
-        # Tests create and drop schemas; a pool that holds connections across those
-        # boundaries produces failures that look like schema bugs and are not.
-        poolclass=NullPool if test else None,
-        pool_size=None if test else settings.db_pool_size,
-        future=True,
-        connect_args={"application_name": "auspice-test" if test else "auspice"},
-    )
+    # Tests create and drop schemas, and a pool that holds connections across those boundaries
+    # produces failures that look like schema bugs and are not. NullPool takes no sizing arguments,
+    # so the two cases are built separately rather than by passing a None that SQLAlchemy rejects.
+    options: dict[str, object] = {
+        "echo": settings.db_echo,
+        "pool_pre_ping": True,
+        "future": True,
+        "connect_args": {"application_name": "auspice-test" if test else "auspice"},
+    }
+    if test:
+        options["poolclass"] = NullPool
+    else:
+        options["pool_size"] = settings.db_pool_size
+        options["max_overflow"] = max(2, settings.db_pool_size // 2)
+
+    engine = create_engine(url, **options)  # type: ignore[arg-type]
 
     @event.listens_for(engine, "connect")
     def _set_session_defaults(dbapi_connection: object, _record: object) -> None:
@@ -60,7 +65,7 @@ def dispose_engine() -> None:
     for test in (False, True):
         try:
             engine = get_engine.__wrapped__(test=test)  # type: ignore[attr-defined]
-        except Exception:  # noqa: BLE001 - nothing to dispose if it never built
+        except Exception:
             continue
         engine.dispose()
     get_engine.cache_clear()
@@ -83,7 +88,7 @@ def transaction(*, test: bool = False) -> Iterator[Connection]:
 def required_extensions(conn: Connection) -> dict[str, str]:
     """Installed extension versions, keyed by name."""
     rows = conn.execute(text("SELECT extname, extversion FROM pg_extension")).all()
-    return {name: version for name, version in rows}
+    return dict(rows)
 
 
 def assert_extensions(conn: Connection) -> None:

@@ -114,7 +114,9 @@ class LocalRawStore(RawStore):
         )
 
         log.debug("stored", key=key, bytes=len(data))
-        return StoredObject(digest=digest, key=key, byte_size=len(data), already_present=False, metadata=enriched)
+        return StoredObject(
+            digest=digest, key=key, byte_size=len(data), already_present=False, metadata=enriched
+        )
 
     def get(self, key: str) -> bytes:
         return self._path(key).read_bytes()
@@ -179,7 +181,9 @@ class S3RawStore(RawStore):
             ContentType="application/json",
         )
         log.debug("stored", key=key, bytes=len(data), bucket=self.bucket)
-        return StoredObject(digest=digest, key=key, byte_size=len(data), already_present=False, metadata=enriched)
+        return StoredObject(
+            digest=digest, key=key, byte_size=len(data), already_present=False, metadata=enriched
+        )
 
     def get(self, key: str) -> bytes:
         response = self._client.get_object(Bucket=self.bucket, Key=key)
@@ -200,7 +204,7 @@ class S3RawStore(RawStore):
     def get_metadata(self, key: str) -> dict[str, Any]:
         try:
             raw = self.get(key + SIDECAR_SUFFIX)
-        except Exception:  # noqa: BLE001 - a missing sidecar is not fatal
+        except Exception:
             return {}
         loaded: dict[str, Any] = json.loads(raw)
         return loaded

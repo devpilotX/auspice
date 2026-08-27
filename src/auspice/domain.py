@@ -325,36 +325,72 @@ VOTE_POSITIONS = ("for", "against", "abstain", "absent", "recused")
 # Normalisation
 # ---------------------------------------------------------------------------
 _RELIEF_PATTERNS: tuple[tuple[re.Pattern[str], Relief], ...] = (
-    (re.compile(r"\brezon|\bzoning\s+map\s+amend|\bmap\s+amend|\bzone\s+chang", re.I), Relief.rezoning),
-    (re.compile(r"\bspecial\s+(use|exception)|\bSUP\b|\bspecial\s+permit", re.I), Relief.special_use_permit),
+    (
+        re.compile(r"\brezon|\bzoning\s+map\s+amend|\bmap\s+amend|\bzone\s+chang", re.I),
+        Relief.rezoning,
+    ),
+    (
+        re.compile(r"\bspecial\s+(use|exception)|\bSUP\b|\bspecial\s+permit", re.I),
+        Relief.special_use_permit,
+    ),
     (re.compile(r"\bconditional\s+use|\bCUP\b", re.I), Relief.conditional_use_permit),
     (re.compile(r"\bvarianc", re.I), Relief.variance),
     (re.compile(r"\bsite\s+plan|\bdevelopment\s+plan\s+review", re.I), Relief.site_plan_approval),
-    (re.compile(r"\bcomprehensive\s+plan|\bcomp\s+plan|\bfuture\s+land\s+use", re.I), Relief.comprehensive_plan_amendment),
+    (
+        re.compile(r"\bcomprehensive\s+plan|\bcomp\s+plan|\bfuture\s+land\s+use", re.I),
+        Relief.comprehensive_plan_amendment,
+    ),
     (re.compile(r"\btext\s+amend|\bordinance\s+amend|\bcode\s+amend", re.I), Relief.text_amendment),
     (re.compile(r"\bannex", re.I), Relief.annexation),
-    (re.compile(r"\bdevelopment\s+agreement|\bhost\s+agreement|\bcommunity\s+benefit", re.I), Relief.development_agreement),
-    (re.compile(r"\babatement|\btax\s+increment|\bTIF\b|\bincentive\s+agreement", re.I), Relief.tax_abatement),
+    (
+        re.compile(r"\bdevelopment\s+agreement|\bhost\s+agreement|\bcommunity\s+benefit", re.I),
+        Relief.development_agreement,
+    ),
+    (
+        re.compile(r"\babatement|\btax\s+increment|\bTIF\b|\bincentive\s+agreement", re.I),
+        Relief.tax_abatement,
+    ),
     (re.compile(r"\bplat\b|\bsubdivi", re.I), Relief.subdivision_plat),
 )
 
 _USE_CLASS_PATTERNS: tuple[tuple[re.Pattern[str], UseClass], ...] = (
-    (re.compile(r"\bhyperscale|\bAI\s+campus|\bcomputing?\s+campus", re.I), UseClass.data_center_hyperscale),
-    (re.compile(r"\bcolocation|\bcolo\b|\bmulti[- ]?tenant\s+data", re.I), UseClass.data_center_colocation),
+    (
+        re.compile(r"\bhyperscale|\bAI\s+campus|\bcomputing?\s+campus", re.I),
+        UseClass.data_center_hyperscale,
+    ),
+    (
+        re.compile(r"\bcolocation|\bcolo\b|\bmulti[- ]?tenant\s+data", re.I),
+        UseClass.data_center_colocation,
+    ),
     (re.compile(r"\bedge\s+data\s*cent", re.I), UseClass.data_center_edge),
-    (re.compile(r"\bdata\s*cent|\bdata\s*centre|\bserver\s+farm", re.I), UseClass.data_center_hyperscale),
+    (
+        re.compile(r"\bdata\s*cent|\bdata\s*centre|\bserver\s+farm", re.I),
+        UseClass.data_center_hyperscale,
+    ),
     (re.compile(r"\bsolar\b", re.I), UseClass.solar_utility),
     (re.compile(r"\bwind\s+(farm|energy|turbine)", re.I), UseClass.wind_onshore),
     (re.compile(r"\bbattery|\bBESS\b|\benergy\s+storage", re.I), UseClass.battery_storage),
     (re.compile(r"\bsubstation|\btransmission\s+line", re.I), UseClass.substation_transmission),
-    (re.compile(r"\bwarehouse|\bdistribution\s+cent|\blogistics", re.I), UseClass.warehouse_logistics),
-    (re.compile(r"\bapartment|\bmultifamily|\bmulti[- ]family", re.I), UseClass.residential_multifamily),
+    (
+        re.compile(r"\bwarehouse|\bdistribution\s+cent|\blogistics", re.I),
+        UseClass.warehouse_logistics,
+    ),
+    (
+        re.compile(r"\bapartment|\bmultifamily|\bmulti[- ]family", re.I),
+        UseClass.residential_multifamily,
+    ),
     (re.compile(r"\bindustrial|\bmanufactur", re.I), UseClass.industrial_general),
 )
 
 _OUTCOME_PATTERNS: tuple[tuple[re.Pattern[str], Outcome], ...] = (
-    (re.compile(r"\bdenied?\b|\brejected?\b|\bfailed\b|\bdefeated\b|\bvoted\s+down", re.I), Outcome.denied),
-    (re.compile(r"\bapproved?\s+with\s+condition|\bapproved?\s+subject\s+to", re.I), Outcome.approved_with_conditions),
+    (
+        re.compile(r"\bdenied?\b|\brejected?\b|\bfailed\b|\bdefeated\b|\bvoted\s+down", re.I),
+        Outcome.denied,
+    ),
+    (
+        re.compile(r"\bapproved?\s+with\s+condition|\bapproved?\s+subject\s+to", re.I),
+        Outcome.approved_with_conditions,
+    ),
     (re.compile(r"\bapproved?\b|\bgranted\b|\badopted\b|\bpassed\b", re.I), Outcome.approved),
     (re.compile(r"\bwithdrew?n?\b|\bwithdraw", re.I), Outcome.withdrawn),
     (re.compile(r"\bcontinued\b|\bdeferred\b|\bpostponed\b", re.I), Outcome.continued),

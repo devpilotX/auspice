@@ -635,8 +635,9 @@ Each adapter is structured identically:
 ```python
 class CivicAdapter(Protocol):
     platform: str
+
     def discover(self, jurisdiction: Jurisdiction) -> list[SourceRef]: ...
-    def fetch(self, ref: SourceRef) -> RawDocument: ...   # bytes + response headers
+    def fetch(self, ref: SourceRef) -> RawDocument: ...  # bytes + response headers
     def enumerate_meetings(self, since: date) -> Iterator[MeetingRef]: ...
     def media_url(self, meeting: MeetingRef) -> str | None: ...
 ```

@@ -92,7 +92,7 @@ def boundaries(
                     "land_sq_km": round(boundary.land_area_sq_km or 0.0, 1),
                 }
             )
-        except Exception as exc:  # noqa: BLE001 - reported per jurisdiction, not fatal
+        except Exception as exc:
             failures += 1
             rows.append({"slug": spec.slug, "geoid": spec.fips, "name": f"failed: {exc}"})
 
@@ -196,7 +196,9 @@ def load(
     console.print()
     if report.boundaries_missing:
         note(f"boundaries missing for: {', '.join(report.boundaries_missing)}")
-    ok(f"{report.jurisdictions} jurisdictions, {report.bodies} bodies, {report.elections} elections")
+    ok(
+        f"{report.jurisdictions} jurisdictions, {report.bodies} bodies, {report.elections} elections"
+    )
 
 
 @app.command("status")

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import typer
 
-from auspice.cli import labels_cmd, registry_cmd
+from auspice.cli import labels_cmd, ledger_cmd, model_cmd, registry_cmd
 from auspice.cli.output import console, heading, note, render_table
 from auspice.config import get_settings
 
@@ -22,6 +22,10 @@ app = typer.Typer(
 
 app.add_typer(registry_cmd.app, name="registry")
 app.add_typer(labels_cmd.app, name="labels")
+app.add_typer(model_cmd.features_app, name="features")
+app.add_typer(model_cmd.train_app, name="train")
+app.add_typer(model_cmd.eval_app, name="eval")
+app.add_typer(ledger_cmd.app, name="ledger")
 
 
 @app.command("version")
@@ -35,8 +39,14 @@ def version() -> None:
         [
             {"setting": "environment", "value": settings.env.value},
             {"setting": "database", "value": str(settings.database_url).split("@")[-1]},
-            {"setting": "raw store", "value": f"{settings.raw_backend.value}: {settings.raw_local_root if settings.raw_backend.value == 'local' else settings.raw_bucket}"},
-            {"setting": "language models", "value": settings.llm_provider if settings.llm_configured else "not configured"},
+            {
+                "setting": "raw store",
+                "value": f"{settings.raw_backend.value}: {settings.raw_local_root if settings.raw_backend.value == 'local' else settings.raw_bucket}",
+            },
+            {
+                "setting": "language models",
+                "value": settings.llm_provider if settings.llm_configured else "not configured",
+            },
             {"setting": "crawler contact", "value": settings.crawler_contact or "not set"},
         ],
         columns=("setting", "value"),
@@ -66,7 +76,9 @@ def stages() -> None:
         numeric=("stage",),
     )
     console.print()
-    note("Labels come before pipelines. `auspice labels validate` is the first command that matters.")
+    note(
+        "Labels come before pipelines. `auspice labels validate` is the first command that matters."
+    )
 
 
 def main() -> None:  # pragma: no cover - console script shim

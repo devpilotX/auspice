@@ -61,7 +61,9 @@ def verify_quote(parsed: ParsedDocument, quote: str) -> VerificationResult:
     """Locate a quote in a parsed document, or explain why it is not there."""
     normalised = normalise_text(quote)
     if len(normalised) < MIN_FRAGMENT_CHARS:
-        return VerificationResult(False, None, f"quote is shorter than {MIN_FRAGMENT_CHARS} characters")
+        return VerificationResult(
+            False, None, f"quote is shorter than {MIN_FRAGMENT_CHARS} characters"
+        )
 
     fragments = [f for f in _ELLIPSIS.split(normalised) if f.strip()]
 
@@ -228,7 +230,7 @@ def verify_stored_citations(
                             document_id=real_document_id,
                             media_type=outcome.headers.get("content-type"),
                         )
-                    except Exception as exc:  # noqa: BLE001
+                    except Exception as exc:
                         report.unreachable += 1
                         report.rows.append(
                             {
@@ -294,17 +296,21 @@ def verify_stored_citations(
 
 def quote_verification_rate(conn: Connection, *, hours: int = 24) -> dict[str, Any]:
     """The section 16.2 metric. Below 99 percent, extraction is unsafe and the pipeline stops."""
-    row = conn.execute(
-        text(
-            """
+    row = (
+        conn.execute(
+            text(
+                """
             SELECT
                 count(*) AS total,
                 count(*) FILTER (WHERE verified) AS verified
             FROM fact_evidence
             WHERE created_at > now() - make_interval(hours => :hours)
             """
-        ).bindparams(hours=hours)
-    ).mappings().one()
+            ).bindparams(hours=hours)
+        )
+        .mappings()
+        .one()
+    )
     total = int(row["total"])
     verified = int(row["verified"])
     return {

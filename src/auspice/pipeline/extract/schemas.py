@@ -122,7 +122,11 @@ DECISION_EVENT_SCHEMA: Final[dict[str, Any]] = {
         "staff_recommendation": {
             "enum": ["approve", "approve_with_conditions", "deny", "none", None]
         },
-        "conditions": {"type": "array", "items": {"type": "string", "maxLength": 500}, "maxItems": 40},
+        "conditions": {
+            "type": "array",
+            "items": {"type": "string", "maxLength": 500},
+            "maxItems": 40,
+        },
         "objection_grounds": {
             "type": "array",
             "items": {"enum": list(OBJECTION_GROUNDS)},
@@ -218,8 +222,15 @@ TRIAGE_SCHEMA: Final[dict[str, Any]] = {
         },
         "document_kind": {
             "enum": [
-                "agenda", "minutes", "staff_report", "ordinance", "resolution",
-                "comprehensive_plan", "application_packet", "legal_notice", "other",
+                "agenda",
+                "minutes",
+                "staff_report",
+                "ordinance",
+                "resolution",
+                "comprehensive_plan",
+                "application_packet",
+                "legal_notice",
+                "other",
             ]
         },
         "target_use_classes_mentioned": {
@@ -227,7 +238,11 @@ TRIAGE_SCHEMA: Final[dict[str, Any]] = {
             "items": {"enum": list(USE_CLASSES)},
             "maxItems": 12,
         },
-        "pages_of_interest": {"type": "array", "items": {"type": "integer", "minimum": 1}, "maxItems": 40},
+        "pages_of_interest": {
+            "type": "array",
+            "items": {"type": "integer", "minimum": 1},
+            "maxItems": 40,
+        },
         "confidence": _CONFIDENCE,
     },
 }

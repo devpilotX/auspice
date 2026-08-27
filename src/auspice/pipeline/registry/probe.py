@@ -47,17 +47,29 @@ _HOST_FINGERPRINTS: tuple[tuple[re.Pattern[str], CivicPlatform, str], ...] = (
     (re.compile(r"\.civicweb\.net", re.I), CivicPlatform.civicplus, "civicweb host"),
     (re.compile(r"\.accela\.com|aca-prod\.accela\.com", re.I), CivicPlatform.accela, "accela host"),
     (re.compile(r"\.opengov\.com", re.I), CivicPlatform.opengov, "opengov host"),
-    (re.compile(r"library\.municode\.com|\.municode\.com", re.I), CivicPlatform.municode, "municode host"),
+    (
+        re.compile(r"library\.municode\.com|\.municode\.com", re.I),
+        CivicPlatform.municode,
+        "municode host",
+    ),
 )
 
 _MARKUP_FINGERPRINTS: tuple[tuple[re.Pattern[str], CivicPlatform, str], ...] = (
     (re.compile(r"InSite|Legistar", re.I), CivicPlatform.legistar, "legistar markup"),
     (re.compile(r"granicus", re.I), CivicPlatform.granicus, "granicus reference"),
     # CivicPlus powers CivicEngage, which is the giveaway in the path structure.
-    (re.compile(r"CivicEngage|/civicax/|civicplus", re.I), CivicPlatform.civicplus, "civicengage markup"),
+    (
+        re.compile(r"CivicEngage|/civicax/|civicplus", re.I),
+        CivicPlatform.civicplus,
+        "civicengage markup",
+    ),
     (re.compile(r"citizenaccess|/CAP/|accela", re.I), CivicPlatform.accela, "accela reference"),
     (re.compile(r"opengov", re.I), CivicPlatform.opengov, "opengov reference"),
-    (re.compile(r"municode|american legal publishing|ecode360", re.I), CivicPlatform.municode, "code host reference"),
+    (
+        re.compile(r"municode|american legal publishing|ecode360", re.I),
+        CivicPlatform.municode,
+        "code host reference",
+    ),
 )
 
 # Well known paths each platform serves. Probed only when the landing page was inconclusive.
@@ -75,7 +87,9 @@ def probe_one(spec_url: str, *, client: httpx.Client) -> ProbeResult:
         response = client.get(spec_url)
     except httpx.HTTPError as exc:
         log.warning("probe failed", url=spec_url, error=str(exc))
-        return ProbeResult(CivicPlatform.unknown, 0.0, f"unreachable: {type(exc).__name__}", spec_url, checked_at)
+        return ProbeResult(
+            CivicPlatform.unknown, 0.0, f"unreachable: {type(exc).__name__}", spec_url, checked_at
+        )
 
     final_url = str(response.url)
     # Every host the page redirected through or links to in a script or iframe source.
@@ -132,12 +146,18 @@ def probe_all(registry: Registry, *, timeout: float = 30.0) -> dict[str, ProbeRe
         headers["From"] = settings.crawler_contact
 
     results: dict[str, ProbeResult] = {}
-    with httpx.Client(timeout=timeout, follow_redirects=True, headers=headers, http2=True) as client:
+    with httpx.Client(
+        timeout=timeout, follow_redirects=True, headers=headers, http2=True
+    ) as client:
         for spec in registry.jurisdictions:
             target = str(spec.sources[0].url) if spec.sources else None
             if target is None:
                 results[spec.slug] = ProbeResult(
-                    CivicPlatform.unknown, 0.0, "no source url in the registry", "", datetime.now(UTC)
+                    CivicPlatform.unknown,
+                    0.0,
+                    "no source url in the registry",
+                    "",
+                    datetime.now(UTC),
                 )
                 continue
             result = probe_one(target, client=client)

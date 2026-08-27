@@ -17,7 +17,9 @@ from auspice.models.eval.thresholds import (
 )
 from auspice.pipeline.graph import labels as labels_module
 
-app = typer.Typer(no_args_is_help=True, help="The labelled decision dataset: hand built ground truth.")
+app = typer.Typer(
+    no_args_is_help=True, help="The labelled decision dataset: hand built ground truth."
+)
 
 
 @app.command("validate")
@@ -116,7 +118,9 @@ def load() -> None:
         title="Jurisdictions with a decision record",
     )
     console.print()
-    ok(f"{report.decisions} decisions, {report.instruments} instruments, {report.citations} citations")
+    ok(
+        f"{report.decisions} decisions, {report.instruments} instruments, {report.citations} citations"
+    )
 
 
 @app.command("stats")
@@ -124,9 +128,10 @@ def stats() -> None:
     """What the graph holds, and how far it is from a usable training set."""
     heading("Label coverage")
     with transaction() as conn:
-        by_jurisdiction = conn.execute(
-            text(
-                """
+        by_jurisdiction = (
+            conn.execute(
+                text(
+                    """
                 SELECT
                     j.slug,
                     j.region,
@@ -141,12 +146,16 @@ def stats() -> None:
                 GROUP BY j.slug, j.region
                 ORDER BY total DESC, j.slug
                 """
+                )
             )
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
 
-        totals = conn.execute(
-            text(
-                """
+        totals = (
+            conn.execute(
+                text(
+                    """
                 SELECT
                     count(*) FILTER (WHERE outcome IN
                         ('approved','approved_with_conditions','denied','withdrawn')) AS terminal,
@@ -154,29 +163,40 @@ def stats() -> None:
                     count(*) AS total
                 FROM application
                 """
+                )
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
 
-        provenance = conn.execute(
-            text(
-                """
+        provenance = (
+            conn.execute(
+                text(
+                    """
                 SELECT
                     count(*) AS citations,
                     count(*) FILTER (WHERE verified) AS verified
                 FROM fact_evidence
                 """
+                )
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
 
-        instruments = conn.execute(
-            text(
-                """
+        instruments = (
+            conn.execute(
+                text(
+                    """
                 SELECT j.slug, i.kind, count(*) AS n
                 FROM instrument i JOIN jurisdiction j ON j.id = i.jurisdiction_id
                 GROUP BY j.slug, i.kind ORDER BY j.slug, i.kind
                 """
+                )
             )
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
 
     if not by_jurisdiction:
         note("The graph holds no decisions. Run `auspice labels load`.")

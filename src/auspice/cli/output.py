@@ -7,6 +7,7 @@ carry meaning, hairline separators, numbers right aligned in a monospace column.
 
 from __future__ import annotations
 
+import contextlib
 import sys
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
@@ -38,10 +39,9 @@ def _force_utf8() -> None:
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is not None:
-            try:
+            # A closed or exotic stream cannot be reconfigured, and that is not worth failing over.
+            with contextlib.suppress(ValueError, OSError):
                 reconfigure(encoding="utf-8", errors="replace")
-            except (ValueError, OSError):  # pragma: no cover - a closed or exotic stream
-                pass
 
 
 _force_utf8()

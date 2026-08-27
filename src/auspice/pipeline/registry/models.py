@@ -56,7 +56,9 @@ class ElectionRule(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     term_years: int = Field(ge=1, le=8)
-    anchor_year: int = Field(ge=1900, le=2100, description="A year a general election is known to have been held")
+    anchor_year: int = Field(
+        ge=1900, le=2100, description="A year a general election is known to have been held"
+    )
     stagger_offset_years: int | None = Field(default=None, ge=1, le=7)
     explicit_dates: list[date] = Field(default_factory=list)
     source: HttpUrl
@@ -153,7 +155,9 @@ class JurisdictionSpec(BaseModel):
     @model_validator(mode="after")
     def _fips_matches_country(self) -> Self:
         if self.country == "US" and self.fips is None:
-            raise ValueError("US jurisdictions must carry a FIPS code: the boundary fetch keys on it")
+            raise ValueError(
+                "US jurisdictions must carry a FIPS code: the boundary fetch keys on it"
+            )
         return self
 
     @model_validator(mode="after")

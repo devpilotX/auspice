@@ -20,6 +20,7 @@ architecture in section 8 collapses.
 
 from __future__ import annotations
 
+import itertools
 import re
 import unicodedata
 from collections.abc import Iterator, Sequence
@@ -42,9 +43,31 @@ BLANK_PAGE_MAX_CHARS = 24
 # that the text came out in the right order rather than as scrambled columns.
 _EXPECTED_TOKENS = frozenset(
     {
-        "the", "and", "of", "to", "in", "shall", "county", "board", "commission", "public",
-        "hearing", "application", "zoning", "district", "property", "approve", "approved",
-        "motion", "staff", "meeting", "development", "plan", "section", "ordinance", "member",
+        "the",
+        "and",
+        "of",
+        "to",
+        "in",
+        "shall",
+        "county",
+        "board",
+        "commission",
+        "public",
+        "hearing",
+        "application",
+        "zoning",
+        "district",
+        "property",
+        "approve",
+        "approved",
+        "motion",
+        "staff",
+        "meeting",
+        "development",
+        "plan",
+        "section",
+        "ordinance",
+        "member",
     }
 )
 
@@ -88,12 +111,27 @@ def normalise_text(raw: str) -> str:
     text = text.translate(
         str.maketrans(
             {
-                "\u2018": "'", "\u2019": "'", "\u201a": "'", "\u201b": "'",
-                "\u201c": '"', "\u201d": '"', "\u201e": '"', "\u201f": '"',
-                "\u2013": "-", "\u2014": "-", "\u2015": "-", "\u2212": "-",
-                "\u00a0": " ", "\u2009": " ", "\u200a": " ", "\u202f": " ",
-                "\u2026": "...", "\ufeff": "",
-                "\u200b": "", "\u200c": "", "\u200d": "",
+                "\u2018": "'",
+                "\u2019": "'",
+                "\u201a": "'",
+                "\u201b": "'",
+                "\u201c": '"',
+                "\u201d": '"',
+                "\u201e": '"',
+                "\u201f": '"',
+                "\u2013": "-",
+                "\u2014": "-",
+                "\u2015": "-",
+                "\u2212": "-",
+                "\u00a0": " ",
+                "\u2009": " ",
+                "\u200a": " ",
+                "\u202f": " ",
+                "\u2026": "...",
+                "\ufeff": "",
+                "\u200b": "",
+                "\u200c": "",
+                "\u200d": "",
             }
         )
     )
@@ -163,7 +201,9 @@ def legibility(text: str) -> float:
 
     # 1. Share of characters that are letters, digits, spaces or ordinary punctuation. OCR noise
     #    is full of characters that are none of those.
-    plausible = sum(1 for ch in stripped if ch.isalnum() or ch.isspace() or ch in ".,;:'\"()-/$%&#*[]")
+    plausible = sum(
+        1 for ch in stripped if ch.isalnum() or ch.isspace() or ch in ".,;:'\"()-/$%&#*[]"
+    )
     density = plausible / len(stripped)
 
     # 2. Share of words of a plausible length. OCR failure produces long consonant runs and
@@ -315,9 +355,9 @@ def _page_from_pdfplumber(data: bytes, page_number: int) -> str:
     between a district and its setback, which is what the ``setback_compliance_margin`` feature
     depends on.
     """
-    import pdfplumber
-
     import io
+
+    import pdfplumber
 
     with pdfplumber.open(io.BytesIO(data)) as pdf:
         if page_number > len(pdf.pages):
@@ -368,7 +408,7 @@ def tesseract_available() -> bool:
         import pytesseract
 
         pytesseract.get_tesseract_version()
-    except Exception:  # noqa: BLE001 - any failure means it is not usable
+    except Exception:
         return False
     return True
 
@@ -388,8 +428,10 @@ def parse_pdf(data: bytes, *, document_id: str, allow_ocr: bool = True) -> Parse
         if score < LEGIBILITY_THRESHOLD:
             try:
                 plumbed = normalise_text(_page_from_pdfplumber(data, page_number))
-            except Exception as exc:  # noqa: BLE001 - a failed step is a step, not a crash
-                log.debug("pdfplumber failed", document_id=document_id, page=page_number, error=str(exc))
+            except Exception as exc:
+                log.debug(
+                    "pdfplumber failed", document_id=document_id, page=page_number, error=str(exc)
+                )
             else:
                 candidates.append((ParseMethod.pdfplumber, plumbed, legibility(plumbed)))
 
@@ -397,8 +439,13 @@ def parse_pdf(data: bytes, *, document_id: str, allow_ocr: bool = True) -> Parse
             if tesseract_available():
                 try:
                     ocr = normalise_text(_page_from_tesseract(data, page_number))
-                except Exception as exc:  # noqa: BLE001
-                    log.debug("tesseract failed", document_id=document_id, page=page_number, error=str(exc))
+                except Exception as exc:
+                    log.debug(
+                        "tesseract failed",
+                        document_id=document_id,
+                        page=page_number,
+                        error=str(exc),
+                    )
                 else:
                     candidates.append((ParseMethod.tesseract, ocr, legibility(ocr)))
             else:
@@ -563,7 +610,7 @@ def chunk_pages(pages: Sequence[ParsedPage]) -> list[ParsedChunk]:
 
     chunks: list[ParsedChunk] = []
     ordinal = 0
-    for start_index, end_index in zip(boundaries, boundaries[1:], strict=False):
+    for start_index, end_index in itertools.pairwise(boundaries):
         if start_index >= end_index:
             continue
         segment = lines[start_index:end_index]
@@ -630,7 +677,8 @@ def _merge_tiny(chunks: list[ParsedChunk]) -> list[ParsedChunk]:
         return []
     merged: list[ParsedChunk] = []
     pending: ParsedChunk | None = None
-    for chunk in chunks:
+    for original in chunks:
+        chunk = original
         if pending is not None:
             chunk = ParsedChunk(
                 ordinal=pending.ordinal,

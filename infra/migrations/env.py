@@ -58,10 +58,8 @@ def include_object(
         schema = getattr(obj, "schema", None)
         if schema in EXTENSION_SCHEMAS:
             return False
-    if type_ == "index" and name is not None and name.startswith(("idx_", "pgis_")):
-        # PostGIS names its own internal indexes this way.
-        return False
-    return True
+    # PostGIS names its own internal indexes this way.
+    return not (type_ == "index" and name is not None and name.startswith(("idx_", "pgis_")))
 
 
 def include_name(name: str | None, type_: str, _parent_names: dict[str, str | None]) -> bool:

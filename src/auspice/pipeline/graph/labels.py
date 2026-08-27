@@ -142,12 +142,15 @@ class DecisionLabel(Labelled):
 
     @model_validator(mode="after")
     def _terminal_needs_date(self) -> Self:
-        if self.outcome in TERMINAL_OUTCOMES and self.outcome is not Outcome.withdrawn:
-            if self.decided_on is None:
-                raise ValueError(
-                    f"{self.label_id}: outcome is {self.outcome.value} but decided_on is missing. "
-                    "A decision with no date is unusable for the survival model."
-                )
+        if (
+            self.outcome in TERMINAL_OUTCOMES
+            and self.outcome is not Outcome.withdrawn
+            and self.decided_on is None
+        ):
+            raise ValueError(
+                f"{self.label_id}: outcome is {self.outcome.value} but decided_on is missing. "
+                "A decision with no date is unusable for the survival model."
+            )
         return self
 
     @model_validator(mode="after")
@@ -256,9 +259,7 @@ class InstrumentLabel(Labelled):
     @model_validator(mode="after")
     def _adopted_or_explicitly_not(self) -> Self:
         if self.proposed_but_not_adopted and self.adopted_on is not None:
-            raise ValueError(
-                f"{self.label_id}: marked as not adopted but carries an adoption date"
-            )
+            raise ValueError(f"{self.label_id}: marked as not adopted but carries an adoption date")
         if not self.proposed_but_not_adopted and self.adopted_on is None:
             raise ValueError(
                 f"{self.label_id}: an adopted instrument needs adopted_on. If it failed, set "
@@ -347,10 +348,8 @@ class LabelLoadReport:
 
 
 def _jurisdiction_index(conn: Connection) -> dict[str, int]:
-    rows = conn.execute(
-        select(schema.jurisdiction.c.slug, schema.jurisdiction.c.id)
-    ).all()
-    return {slug: jid for slug, jid in rows}
+    rows = conn.execute(select(schema.jurisdiction.c.slug, schema.jurisdiction.c.id)).all()
+    return dict(rows)
 
 
 def _body_index(conn: Connection) -> dict[tuple[int, str], int]:
@@ -442,15 +441,17 @@ def load(
             """
         )
     )
-    conn.execute(
-        text("DELETE FROM application WHERE label_source = 'hand_labelled'")
-    )
+    conn.execute(text("DELETE FROM application WHERE label_source = 'hand_labelled'"))
 
     for row in labels.decisions:
         jurisdiction_id = jurisdictions.get(row.jurisdiction)
         if jurisdiction_id is None:
             report.unknown_jurisdictions.append(row.jurisdiction)
-            log.warning("label references an unknown jurisdiction", label_id=row.label_id, slug=row.jurisdiction)
+            log.warning(
+                "label references an unknown jurisdiction",
+                label_id=row.label_id,
+                slug=row.jurisdiction,
+            )
             continue
 
         body_id = bodies.get((jurisdiction_id, row.body.value))
