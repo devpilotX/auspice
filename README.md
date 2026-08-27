@@ -57,8 +57,8 @@ auspice/
 │  ├─ monitor/               diffing, materiality scoring, alerts
 │  └─ cli/                   the `auspice` command
 ├─ apps/
-│  ├─ api/                   FastAPI service
-│  └─ web/                   Next.js 15 interface and public accuracy page
+│  ├─ api/                   FastAPI service, including PostGIS vector tiles
+│  └─ web/                   Next.js 15 interface, public accuracy page, MapLibre coverage map
 ├─ packages/shared-types/    OpenAPI generated TypeScript, one source of truth
 ├─ data/
 │  ├─ registry/              jurisdiction registry, hand built, version controlled
@@ -162,6 +162,24 @@ to imply otherwise is large:
 The mechanisms are built and tested. What is missing is data, and the order matters: the
 specification says data and labels first, then the model, then the interface, and the reason to
 follow it is that a screen built on an unmeasured model is a screen that lies confidently.
+
+## The interface
+
+Eight pages, all of which answer with real data or say plainly that they cannot.
+
+| Page | What it is for |
+|---|---|
+| `/` | What the product claims, and the one number it will not give you yet |
+| `/portfolio` | Section 5.4 product 2. Paste or upload a site list, get it ranked, with the sites we would not score kept separate rather than sorted last |
+| `/accuracy` | The published record. Reliability curve, Brier score, the ledger, and a link to download all of it |
+| `/jurisdictions` | Coverage. The map, site search, and the twelve counties with their depth and freshness |
+| `/jurisdictions/[slug]` | One county's profile. Indexed, no login |
+| `/report/[publicId]` | A published score, with its drivers, precedents and evidence drawer |
+| `/method`, `/neutrality`, `/data-sources` | Rendered from `docs/`, so the published claim and the enforced one cannot come apart |
+
+The map serves vector tiles from PostGIS with `ST_AsMVT`. There is no basemap and no tile vendor.
+Shading is decision depth, never probability, and the coverage table below it is the same information
+and works without it.
 
 ## Writing and design
 
