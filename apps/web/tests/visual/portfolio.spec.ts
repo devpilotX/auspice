@@ -136,6 +136,46 @@ test.describe("portfolio triage", () => {
     }
   });
 
+  test("a pasted list replaces the rows", async ({ page }) => {
+    await stubPortfolio(page, RESPONSE);
+    await page.goto("/portfolio");
+
+    await page.getByLabel("Paste a list of sites").fill(
+      [
+        "Site,County,Use class,Acres,MW",
+        "Pageland Road,Loudoun County,data_center_hyperscale,412,300",
+        "Cedar Rapids West,Linn County,solar_utility,900,",
+      ].join("\n"),
+    );
+    await page.getByRole("button", { name: "read the list" }).click();
+
+    // Replaced, not appended. Three blank rows plus two pasted would be five.
+    await expect(page.getByRole("button", { name: /score 2 sites/ })).toBeVisible();
+    await expect(page.getByLabel("Label for site 1")).toHaveValue("Pageland Road");
+    await expect(page.getByLabel("Acres for site 1")).toHaveValue("412");
+    await expect(page.getByLabel("Jurisdiction for site 2")).toHaveValue("us-ia-linn");
+  });
+
+  test("a county we do not cover is named, not guessed at", async ({ page }) => {
+    await page.goto("/portfolio");
+
+    await page.getByLabel("Paste a list of sites").fill(
+      [
+        "Good,Loudoun County,data_center_hyperscale,100,50",
+        "Bad,Loudon,data_center_hyperscale,100,50",
+      ].join("\n"),
+    );
+    await page.getByRole("button", { name: "read the list" }).click();
+
+    // Loudon is a real county in Tennessee and one letter from Loudoun. Matching it would score the wrong
+    // jurisdiction and look entirely normal doing so.
+    await expect(page.getByText("1 row we could not read")).toBeVisible();
+    await expect(page.getByText(/we do not cover Loudon/)).toBeVisible();
+    await expect(page.getByText("line 2")).toBeVisible();
+    // The good row still loaded.
+    await expect(page.getByRole("button", { name: /score 1 site/ })).toBeVisible();
+  });
+
   test("says what happened when the API does not answer", async ({ page }) => {
     await page.route("**/v1/portfolio", async (route) => {
       await route.abort("connectionrefused");

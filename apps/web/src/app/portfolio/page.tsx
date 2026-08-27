@@ -19,13 +19,14 @@
 
 import { useMemo, useState } from "react";
 
-import { Numeric, Panel, Rule, StatusDot, Tag } from "@/components/primitives";
+import { Label, Numeric, Panel, Rule, StatusDot, Tag } from "@/components/primitives";
 import {
   api,
   type PortfolioResponse,
   type PortfolioRow,
   type SiteInput,
 } from "@/lib/api";
+import { parseSiteList, type RowProblem } from "@/lib/site-list";
 
 const ABSENT = "\u00b7";
 
@@ -117,6 +118,37 @@ export default function PortfolioPage() {
   const [result, setResult] = useState<PortfolioResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [problems, setProblems] = useState<RowProblem[]>([]);
+
+  /**
+   * Replace the rows with a pasted list.
+   *
+   * Replace rather than append, because someone pasting fourteen sites into a form showing three blanks
+   * means those fourteen, and appending would leave three empty rows for them to delete.
+   */
+  function ingest(text: string) {
+    const parsed = parseSiteList(text, {
+      jurisdictions: JURISDICTIONS,
+      useClasses: USE_CLASSES,
+      reliefs: RELIEFS,
+    });
+    setProblems(parsed.problems);
+    if (parsed.sites.length > 0) {
+      setDrafts(
+        parsed.sites.map((site) => ({
+          id: nextId++,
+          label: site.label,
+          jurisdiction: site.jurisdiction,
+          useClass: site.useClass,
+          relief: site.relief,
+          acres: site.acres,
+          capacityMw: site.capacityMw,
+        })),
+      );
+      setResult(null);
+      setError(null);
+    }
+  }
 
   const usable = useMemo(
     () =>
@@ -181,6 +213,10 @@ export default function PortfolioPage() {
       </header>
 
       <Rule className="my-8" strong />
+
+      <SiteListInput onIngest={ingest} problems={problems} />
+
+      <Rule className="my-8" />
 
       <SiteEditor
         drafts={drafts}
@@ -249,6 +285,136 @@ export default function PortfolioPage() {
 /* ---------------------------------------------------------------------------
    Input
    --------------------------------------------------------------------------- */
+
+/**
+ * Paste or upload a list.
+ *
+ * The row editor below is for adjusting a few sites. This is for the case the feature exists to serve: a
+ * list of fourteen already sitting in a spreadsheet. Typing them in one at a time is the reason someone
+ * would stay in the spreadsheet instead.
+ *
+ * Problems are shown in full and next to the line that caused them. A parser that reported only the first
+ * bad row in a list of fourteen would turn three typos into three round trips.
+ */
+function SiteListInput({
+  onIngest,
+  problems,
+}: {
+  onIngest: (text: string) => void;
+  problems: RowProblem[];
+}) {
+  const [text, setText] = useState("");
+
+  return (
+    <section>
+      <Label>paste a list</Label>
+      <p
+        className="mt-2 mb-3 max-w-2xl"
+        style={{ fontSize: "var(--text-small)", color: "var(--text-secondary)" }}
+      >
+        One site per line, from a spreadsheet or typed. Commas or tabs, with or without a header row. The
+        column order without a header is site, county, use class, acres, megawatts, relief. A county we do
+        not cover is reported rather than matched to the nearest one.
+      </p>
+
+      <textarea
+        aria-label="Paste a list of sites"
+        value={text}
+        onChange={(event) => {
+          setText(event.target.value);
+        }}
+        rows={4}
+        spellCheck={false}
+        placeholder={"Pageland Road, Loudoun County, data_center_hyperscale, 412, 300"}
+        className="w-full rounded-sm px-3 py-2 font-mono"
+        style={{
+          fontSize: "var(--text-tiny)",
+          border: "1px solid var(--line-hairline)",
+          backgroundColor: "var(--bg-base)",
+          color: "var(--text-primary)",
+          resize: "vertical",
+        }}
+      />
+
+      <div className="mt-3 flex flex-wrap items-center gap-4">
+        <button
+          type="button"
+          onClick={() => {
+            onIngest(text);
+          }}
+          disabled={text.trim() === ""}
+          className="rounded-sm px-4 font-mono uppercase disabled:opacity-40"
+          style={{
+            height: 40,
+            fontSize: "var(--text-micro)",
+            letterSpacing: "0.12em",
+            border: "1px solid var(--line-hairline)",
+            backgroundColor: "var(--bg-raised)",
+            color: "var(--text-primary)",
+          }}
+        >
+          read the list
+        </button>
+
+        <label
+          className="cursor-pointer font-mono uppercase"
+          style={{
+            fontSize: "var(--text-micro)",
+            letterSpacing: "0.12em",
+            color: "var(--text-accent)",
+          }}
+        >
+          or upload a csv
+          <input
+            type="file"
+            accept=".csv,.tsv,.txt,text/csv,text/plain,text/tab-separated-values"
+            className="sr-only"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file === undefined) return;
+              // Read in the browser. A site list is commercially sensitive and there is no reason for it to
+              // touch a server before the scoring request that needs it.
+              void file.text().then((contents) => {
+                setText(contents);
+                onIngest(contents);
+              });
+            }}
+          />
+        </label>
+      </div>
+
+      {problems.length > 0 && (
+        <Panel className="mt-4 p-4">
+          <Label>
+            {problems.length} row{problems.length === 1 ? "" : "s"} we could not read
+          </Label>
+          <ul className="mt-3">
+            {problems.map((problem) => (
+              <li
+                key={`${problem.line}-${problem.reason}`}
+                className="py-1.5"
+                style={{ borderTop: "1px solid var(--line-hairline)" }}
+              >
+                <span
+                  className="font-mono"
+                  style={{ fontSize: "var(--text-tiny)", color: "var(--text-tertiary)" }}
+                >
+                  line {problem.line}
+                </span>
+                <span
+                  className="ml-3"
+                  style={{ fontSize: "var(--text-small)", color: "var(--text-primary)" }}
+                >
+                  {problem.reason}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
+    </section>
+  );
+}
 
 const FIELD_STYLE = {
   height: 40,
