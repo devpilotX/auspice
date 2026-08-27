@@ -119,16 +119,33 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Install uv
+        # The generated types check regenerates the OpenAPI document from the FastAPI application, so
+        # this job needs Python as well as Node. Cheaper than booting the API over HTTP just to have it
+        # describe itself, and it cannot drift from the code the way a running server's document can.
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Python dependencies
+        run: uv sync --all-extras
+
       - name: Dependency audit
         # Fails on anything new. Assessed advisories are recorded in scripts/check-audit.mjs with a
         # reason and a review date, so the report is neither muted nor permanently ignored.
         run: node scripts/check-audit.mjs
 
+      - name: Generated types match the API
+        # packages/shared-types is generated, so it is only a single source of truth if the derivation is
+        # checked. Without this a route can change its response shape while the web application keeps
+        # compiling against the old one, and the mismatch surfaces at runtime as an undefined field.
+        run: npm run types:check
+
       - name: Lint
         run: npm run lint --workspace apps/web
 
       - name: Type check
-        run: npm run typecheck --workspace apps/web
+        run: npm run typecheck
 
       - name: Build
         run: npm run build --workspace apps/web

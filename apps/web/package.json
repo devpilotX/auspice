@@ -12,6 +12,7 @@
     "budget": "node scripts/check-budget.mjs"
   },
   "dependencies": {
+    "@auspice/shared-types": "*",
     "@base-ui-components/react": "1.0.0-rc.0",
     "@tanstack/react-query": "5.90.2",
     "@tanstack/react-table": "8.21.3",

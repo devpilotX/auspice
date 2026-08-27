@@ -12,7 +12,10 @@
     "dev": "npm run dev --workspace apps/web",
     "build": "npm run build --workspace apps/web",
     "lint": "npm run lint --workspace apps/web",
-    "typecheck": "npm run typecheck --workspace apps/web",
-    "types:generate": "npm run generate --workspace packages/shared-types"
+    "typecheck": "npm run typecheck --workspace apps/web && npm run typecheck --workspace packages/shared-types",
+    "types:export": "uv run python tools/export_openapi.py",
+    "types:generate": "npm run types:export && npm run generate --workspace packages/shared-types",
+    "types:check": "node scripts/check-types-current.mjs",
+    "audit:check": "node scripts/check-audit.mjs"
   }
 }
