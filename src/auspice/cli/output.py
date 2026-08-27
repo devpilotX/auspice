@@ -10,7 +10,7 @@ from __future__ import annotations
 import contextlib
 import sys
 from collections.abc import Iterable, Mapping, Sequence
-from typing import Any
+from typing import Any, NoReturn
 
 import typer
 from rich.console import Console
@@ -121,8 +121,12 @@ def _format(value: Any) -> str:
     return str(value)
 
 
-def fail(message: str, *, hint: str | None = None, code: int = 1) -> None:
-    """Print an error and exit. Errors say what to do next, not just what went wrong."""
+def fail(message: str, *, hint: str | None = None, code: int = 1) -> NoReturn:
+    """Print an error and exit. Errors say what to do next, not just what went wrong.
+
+    Returns NoReturn so a caller can narrow a type after it, which is honest about what the function does
+    and saves every call site an unreachable branch.
+    """
     err_console.print(f"error: {message}", style="broken")
     if hint:
         err_console.print(f"       {hint}", style="muted")

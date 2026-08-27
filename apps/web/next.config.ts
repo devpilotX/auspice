@@ -28,8 +28,9 @@ const config: NextConfig = {
     ignoreDuringBuilds: false,
   },
 
-  // Next's config type declares headers() as returning a promise. Nothing here needs to await, so the
-  // promise is produced directly rather than by marking the function async for no reason.
+  // The Content Security Policy is set per request in src/middleware.ts rather than here, because the App
+  // Router streams hydration data through inline scripts and those need a nonce. A static policy without one
+  // serves correct HTML that renders nothing, which is a failure only a browser can see.
   headers() {
     return Promise.resolve([
       {
@@ -43,20 +44,8 @@ const config: NextConfig = {
             value: "camera=(), microphone=(), geolocation=(), payment=()",
           },
           {
-            // No inline scripts, no eval, no third party anything. The product loads its own fonts
-            // through next/font, so there is no font or style CDN to allow either.
-            key: "Content-Security-Policy",
-            value: [
-              "default-src 'self'",
-              "script-src 'self'" + (process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""),
-              "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data:",
-              "font-src 'self'",
-              `connect-src 'self' ${process.env.NEXT_PUBLIC_API_BASE_URL ?? ""}`.trim(),
-              "frame-ancestors 'none'",
-              "base-uri 'self'",
-              "form-action 'self'",
-            ].join("; "),
+            key: "Strict-Transport-Security",
+            value: "max-age=63072000; includeSubDomains; preload",
           },
         ],
       },

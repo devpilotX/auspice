@@ -57,6 +57,12 @@ uv run auspice extract run         # needs a language model key, otherwise repor
 uv run auspice resolve run
 uv run auspice features build
 uv run auspice monitor run
+
+# Worth checking after each run
+uv run auspice ingest freshness
+uv run auspice ingest dead-letters
+uv run auspice extract verification-rate
+uv run auspice monitor pending
 ```
 
 Each stage is independently re-runnable and idempotent. Re-running ingest on unchanged content is free,

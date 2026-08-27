@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import typer
 
-from auspice.cli import labels_cmd, ledger_cmd, model_cmd, registry_cmd
+from auspice.cli import labels_cmd, ledger_cmd, model_cmd, pipeline_cmd, registry_cmd
 from auspice.cli.output import console, heading, note, render_table
 from auspice.config import get_settings
 
@@ -22,9 +22,15 @@ app = typer.Typer(
 
 app.add_typer(registry_cmd.app, name="registry")
 app.add_typer(labels_cmd.app, name="labels")
+app.add_typer(pipeline_cmd.ingest_app, name="ingest")
+app.add_typer(pipeline_cmd.parse_app, name="parse")
+app.add_typer(pipeline_cmd.transcribe_app, name="transcribe")
+app.add_typer(pipeline_cmd.extract_app, name="extract")
+app.add_typer(pipeline_cmd.resolve_app, name="resolve")
 app.add_typer(model_cmd.features_app, name="features")
 app.add_typer(model_cmd.train_app, name="train")
 app.add_typer(model_cmd.eval_app, name="eval")
+app.add_typer(pipeline_cmd.monitor_app, name="monitor")
 app.add_typer(ledger_cmd.app, name="ledger")
 
 
@@ -55,21 +61,26 @@ def version() -> None:
 
 @app.command("stages")
 def stages() -> None:
-    """The eleven pipeline stages and the command that drives each one."""
+    """The eleven pipeline stages and the command that drives each one.
+
+    Where a stage has no single run command, this names what does exist rather than something that does not.
+    A command list that promises more than the code delivers is the first thing that makes an operator
+    distrust the rest of it.
+    """
     heading("Pipeline")
     render_table(
         [
             {"stage": 0, "name": "jurisdiction registry", "command": "auspice registry load"},
             {"stage": 1, "name": "ingestion", "command": "auspice ingest run"},
             {"stage": 2, "name": "document processing", "command": "auspice parse run"},
-            {"stage": 3, "name": "transcription", "command": "auspice transcribe run"},
+            {"stage": 3, "name": "transcription", "command": "auspice transcribe status"},
             {"stage": 4, "name": "extraction", "command": "auspice extract run"},
             {"stage": 5, "name": "entity resolution", "command": "auspice resolve run"},
-            {"stage": 6, "name": "the Permission Graph", "command": "auspice graph status"},
+            {"stage": 6, "name": "the Permission Graph", "command": "auspice labels stats"},
             {"stage": 7, "name": "feature engineering", "command": "auspice features build"},
             {"stage": 8, "name": "modelling", "command": "auspice train all"},
             {"stage": 9, "name": "calibration and evaluation", "command": "auspice eval kill-test"},
-            {"stage": 10, "name": "output generation", "command": "auspice score site"},
+            {"stage": 10, "name": "output generation", "command": "POST /v1/score"},
             {"stage": 11, "name": "monitoring", "command": "auspice monitor run"},
         ],
         columns=("stage", "name", "command"),
