@@ -2,6 +2,7 @@ import dynamic from "next/dynamic";
 
 import { Caption, Label, Panel, Rule, StatusDot, Unavailable } from "@/components/primitives";
 import { api } from "@/lib/api";
+import { apiBaseUrl } from "@/lib/api-origin";
 
 /*
   visx is loaded on demand rather than in the initial bundle.
@@ -215,8 +216,14 @@ export default async function AccuracyPage() {
             {accuracy.chain.reason === null ? "" : ` ${accuracy.chain.reason}.`}
           </p>
         )}
+        {/*
+          Points at the API rather than at a Next route. It read `/api/ledger`, which does not exist here
+          and never did, so "Download the full ledger" was a dead link on the page whose entire purpose is
+          to be checkable by someone who does not trust us. Built from the same origin helper the client
+          uses, so it cannot drift from where the API actually is.
+        */}
         <a
-          href="/api/ledger"
+          href={`${apiBaseUrl()}/v1/public/ledger`}
           className="mt-6 inline-block rounded-sm underline decoration-1 underline-offset-2"
           style={{ fontSize: "var(--text-small)", color: "var(--text-accent)" }}
         >

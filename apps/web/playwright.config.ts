@@ -20,7 +20,7 @@ import { defineConfig, devices } from "@playwright/test";
 */
 
 export default defineConfig({
-  testDir: "./tests/visual",
+  testDir: "./tests",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
@@ -50,13 +50,21 @@ export default defineConfig({
 
   projects: [
     {
+      // Pure logic, no browser and no server. Kept in this runner rather than a second test framework,
+      // because the code under test is TypeScript the web app imports and one runner is enough.
+      name: "unit",
+      testDir: "./tests/unit",
+    },
+    {
       name: "light",
+      testDir: "./tests/visual",
       use: { ...devices["Desktop Chrome"], colorScheme: "light" },
     },
     {
       // Dark mode is a real second theme with its own token values, so it gets its own baselines rather
       // than being assumed to follow from the light ones.
       name: "dark",
+      testDir: "./tests/visual",
       use: { ...devices["Desktop Chrome"], colorScheme: "dark" },
     },
   ],

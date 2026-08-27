@@ -72,6 +72,7 @@ const NAV = [
   { href: "/accuracy", label: "Accuracy" },
   { href: "/jurisdictions", label: "Coverage" },
   { href: "/method", label: "Method" },
+  { href: "/neutrality", label: "Neutrality" },
 ];
 
 export default function RootLayout({ children }: { children: ReactNode }) {

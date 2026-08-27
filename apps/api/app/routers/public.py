@@ -298,6 +298,7 @@ async def methodology() -> dict[str, Any]:
             "also_abstain_when": {
                 "data_older_than_days": thresholds.STALENESS_ABSTAIN_DAYS,
                 "jurisdiction_chain_unresolved": True,
+                "distinct_outcomes_in_training_below": thresholds.MIN_OUTCOME_CLASSES,
             },
             "flag_without_abstaining_when": {
                 "data_older_than_days": thresholds.STALENESS_FLAG_DAYS

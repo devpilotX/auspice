@@ -255,6 +255,58 @@ class TestServedVersionIsTheModelVersion:
         assert models.primary_version == BASE_RATE
 
 
+class TestPublishedMethodologyMatchesTheCode:
+    """The published rule and the enforced rule have to be the same rule.
+
+    ``docs/METHODOLOGY.md`` and the `/v1/public/methodology` endpoint are the public claim about how this
+    product decides. The endpoint serves the threshold constants directly so the numbers cannot drift, and
+    that protects the values while saying nothing about a condition being left out. A fourth abstention
+    condition was added and the endpoint kept describing three, which is the more damaging kind of error:
+    every number on the page was correct and the page was still wrong.
+    """
+
+    def test_every_abstention_reason_is_published(self) -> None:
+        import asyncio
+        import json
+
+        from app.routers.public import methodology
+
+        published = asyncio.run(methodology())
+        text = json.dumps(published["abstention_rule"])
+
+        # Each enum member has to be discoverable in the published rule, by the quantity that triggers it.
+        expected = {
+            AbstentionReason.thin_local_record: "comparable_decisions_below",
+            AbstentionReason.dominated_by_pooling: "pooling_weight_above",
+            AbstentionReason.interval_too_wide: "interval_width_above",
+            AbstentionReason.stale_jurisdiction_data: "data_older_than_days",
+            AbstentionReason.unresolved_jurisdiction_chain: "jurisdiction_chain_unresolved",
+            AbstentionReason.degenerate_training_corpus: "distinct_outcomes_in_training_below",
+        }
+        assert set(expected) == set(AbstentionReason), (
+            "a new abstention reason was added without deciding how to publish it. Add it to this map "
+            "and to the endpoint, or the published methodology understates when we refuse to answer."
+        )
+        for reason, key in expected.items():
+            assert key in text, f"{reason.value} is enforced but not published"
+
+    def test_the_published_thresholds_are_the_enforced_thresholds(self) -> None:
+        import asyncio
+
+        from app.routers.public import methodology
+        from auspice.models.eval import thresholds
+
+        published = asyncio.run(methodology())
+        conditions = published["abstention_rule"]["abstain_when_all_hold"]
+        assert conditions["comparable_decisions_below"] == thresholds.ABSTAIN_MAX_COMPARABLES
+        assert conditions["pooling_weight_above"] == thresholds.ABSTAIN_MAX_POOLING_WEIGHT
+        assert conditions["interval_width_above"] == thresholds.ABSTAIN_MAX_INTERVAL_WIDTH
+        assert (
+            published["abstention_rule"]["also_abstain_when"]["distinct_outcomes_in_training_below"]
+            == thresholds.MIN_OUTCOME_CLASSES
+        )
+
+
 class TestDegenerateTrainingCorpus:
     """The bug this class exists for.
 
