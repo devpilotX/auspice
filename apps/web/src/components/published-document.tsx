@@ -46,8 +46,8 @@ function Inlines({ nodes }: { nodes: Inline[] }) {
 }
 
 const HEADING_STYLE = {
-  1: { fontSize: "var(--text-title)", marginTop: 0 },
-  2: { fontSize: "var(--text-heading)", marginTop: "2.5rem" },
+  1: { fontSize: "var(--text-display-3)", marginTop: 0 },
+  2: { fontSize: "var(--text-heading-1)", marginTop: "2.5rem" },
   3: { fontSize: "var(--text-body)", marginTop: "1.75rem" },
 } as const;
 

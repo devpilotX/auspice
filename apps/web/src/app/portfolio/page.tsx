@@ -192,7 +192,7 @@ export default function PortfolioPage() {
         <h1
           style={{
             fontFamily: "var(--font-serif)",
-            fontSize: "var(--text-title)",
+            fontSize: "var(--text-display-3)",
             color: "var(--text-primary)",
           }}
         >
@@ -330,7 +330,7 @@ function SiteListInput({
         style={{
           fontSize: "var(--text-tiny)",
           border: "1px solid var(--line-hairline)",
-          backgroundColor: "var(--bg-base)",
+          backgroundColor: "var(--bg-page)",
           color: "var(--text-primary)",
           resize: "vertical",
         }}
@@ -420,7 +420,7 @@ const FIELD_STYLE = {
   height: 40,
   fontSize: "var(--text-small)",
   border: "1px solid var(--line-hairline)",
-  backgroundColor: "var(--bg-base)",
+  backgroundColor: "var(--bg-page)",
   color: "var(--text-primary)",
 } as const;
 
@@ -625,7 +625,7 @@ function Results({ result }: { result: PortfolioResponse }) {
         <h2
           style={{
             fontFamily: "var(--font-serif)",
-            fontSize: "var(--text-heading)",
+            fontSize: "var(--text-heading-1)",
             color: "var(--text-primary)",
           }}
         >
@@ -833,7 +833,7 @@ function NotScored({ rows }: { rows: PortfolioRow[] }) {
         <h3
           style={{
             fontFamily: "var(--font-serif)",
-            fontSize: "var(--text-heading)",
+            fontSize: "var(--text-heading-1)",
             color: "var(--text-primary)",
           }}
         >

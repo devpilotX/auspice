@@ -26,6 +26,9 @@ export default tseslint.config(
       "playwright-report/**",
       "test-results/**",
       "next-env.d.ts",
+      // MapLibre's worker and its shared chunk, copied verbatim by scripts/copy-maplibre-worker.mjs.
+      // Vendor code, not ours, and 478 kB of it.
+      "public/maplibre/**",
     ],
   },
   js.configs.recommended,

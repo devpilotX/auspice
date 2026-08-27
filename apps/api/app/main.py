@@ -27,7 +27,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.deps import Db
-from app.routers import public, score
+from app.routers import public, score, tiles
 from app.schemas import HealthResponse
 from app.security import get_key_ring
 from auspice import __version__
@@ -144,6 +144,7 @@ async def domain_error(_request: Request, exc: AuspiceError) -> JSONResponse:
 
 app.include_router(score.router)
 app.include_router(public.router)
+app.include_router(tiles.router)
 
 
 @app.get("/healthz", response_model=HealthResponse, tags=["operations"])

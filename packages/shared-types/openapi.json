@@ -2298,6 +2298,70 @@
           "score"
         ]
       }
+    },
+    "/v1/tiles/jurisdictions/{z}/{x}/{y}.mvt": {
+      "get": {
+        "description": "One tile of county boundaries, with the registry attributes attached.\n\nThe attributes travel with the geometry so the map can style and label without a second request per\nfeature. They are the same values `/v1/public/jurisdictions` serves, and both read the same columns.",
+        "operationId": "jurisdiction_tile_v1_tiles_jurisdictions__z___x___y__mvt_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "z",
+            "required": true,
+            "schema": {
+              "maximum": 12,
+              "minimum": 3,
+              "title": "Z",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "x",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "X",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "y",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "title": "Y",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/vnd.mapbox-vector-tile": {}
+            },
+            "description": "A vector tile"
+          },
+          "204": {
+            "description": "No jurisdiction intersects this tile"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Jurisdiction boundaries as a Mapbox vector tile",
+        "tags": [
+          "tiles"
+        ]
+      }
     }
   }
 }

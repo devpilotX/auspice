@@ -63,8 +63,13 @@ export function middleware(request: NextRequest) {
     // documented above. unsafe-eval is for the dev server's fast refresh and cannot reach production.
     `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data:",
+    "img-src 'self' data: blob:",
     "font-src 'self'",
+    // MapLibre decodes tiles in a web worker, which it constructs from a blob URL. Without this the map
+    // renders nothing and the console says the worker was blocked. Restricted to blob and self rather than
+    // opened to any origin: a worker from a third party host would be arbitrary code execution.
+    "worker-src 'self' blob:",
+    "child-src 'self' blob:",
     `connect-src 'self'${apiOrigin ? ` ${apiOrigin}` : ""}`,
     "object-src 'none'",
     "frame-ancestors 'none'",

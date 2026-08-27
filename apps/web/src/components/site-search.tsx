@@ -119,7 +119,7 @@ export function SiteSearch({ jurisdictions }: { jurisdictions: Searchable[] }) {
             minWidth: 260,
             fontSize: "var(--text-small)",
             border: "1px solid var(--line-hairline)",
-            backgroundColor: "var(--bg-base)",
+            backgroundColor: "var(--bg-page)",
             color: "var(--text-primary)",
           }}
         />

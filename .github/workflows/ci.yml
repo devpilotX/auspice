@@ -141,6 +141,11 @@ jobs:
         # compiling against the old one, and the mismatch surfaces at runtime as an undefined field.
         run: npm run types:check
 
+      - name: Design tokens all resolve
+        # CSS resolves an undefined custom property to nothing, so a token name that does not exist renders
+        # as a missing colour or a default font size and passes lint, types and the build. Three did.
+        run: npm run check:tokens --workspace apps/web
+
       - name: Lint
         run: npm run lint --workspace apps/web
 

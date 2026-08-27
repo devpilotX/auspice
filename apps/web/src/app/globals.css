@@ -1,1 +1,40 @@
 @import "../styles/tokens.css";
+
+/*
+  MapLibre's own stylesheet, for the canvas positioning and the zoom control. Imported here rather than in
+  the component so it is in the single stylesheet the page already loads, and so the overrides below sit
+  immediately after the rules they correct.
+*/
+@import "maplibre-gl/dist/maplibre-gl.css";
+
+/*
+  Bring the map controls into the design system. MapLibre ships a rounded, shadowed control, and this
+  product has a two pixel radius and no shadows anywhere. Overriding here rather than hiding the control and
+  rebuilding it, because the keyboard and screen reader behaviour of the real one is worth keeping.
+*/
+.maplibregl-ctrl-group {
+  border-radius: 2px;
+  box-shadow: none;
+  border: 1px solid var(--line-strong);
+  background-color: var(--bg-raised);
+}
+
+.maplibregl-ctrl-group button {
+  border-radius: 0;
+}
+
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid var(--line-hairline);
+}
+
+.maplibregl-ctrl-group button:focus-visible {
+  outline: 2px solid var(--color-brass);
+  outline-offset: -2px;
+  box-shadow: none;
+}
+
+/* The canvas takes its own focus ring from the same token as everything else. */
+.maplibregl-canvas:focus-visible {
+  outline: 2px solid var(--color-brass);
+  outline-offset: -2px;
+}
