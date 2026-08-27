@@ -41,11 +41,16 @@ from auspice.domain import (
 )
 from auspice.errors import StageUnavailableError
 from auspice.logging import get_logger
+from auspice.models.baseline.base_rate import MODEL_VERSION as BASE_RATE_VERSION
 from auspice.models.baseline.base_rate import BaseRateModel
+from auspice.models.baseline.boosted import MODEL_VERSION as BOOSTED_VERSION
 from auspice.models.baseline.boosted import BoostedModel
 from auspice.models.dataset import Dataset, load_dataset
+from auspice.models.hierarchical.model import MODEL_VERSION as HIERARCHICAL_VERSION
 from auspice.models.hierarchical.model import HierarchicalModel
+from auspice.models.rulechange.model import MODEL_VERSION as RULE_CHANGE_VERSION
 from auspice.models.rulechange.model import RuleChangeModel
+from auspice.models.survival.model import MODEL_VERSION as SURVIVAL_VERSION
 from auspice.models.survival.model import SurvivalModel
 from auspice.pipeline.features import (
     BY_NAME,
@@ -134,6 +139,21 @@ class ServingModels:
         if self.boosted is not None and self.boosted.booster is not None:
             return "gradient_boosted"
         return "base_rate"
+
+    @property
+    def primary_version(self) -> str:
+        """The version of the model that produced the number, not the version of this package.
+
+        These were the same string by accident and then diverged. The engine recorded "0.1.0", which is
+        ``auspice.__version__``, while every model declares ``MODEL_VERSION = "1.0.0"``. A published
+        prediction therefore cited a model version that does not exist, in a ledger payload that cannot be
+        edited. Reading it from the serving model means the two cannot drift again.
+        """
+        if self.primary_kind == "hierarchical":
+            return HIERARCHICAL_VERSION
+        if self.primary_kind == "gradient_boosted":
+            return BOOSTED_VERSION
+        return BASE_RATE_VERSION
 
 
 def load_serving_models(
@@ -935,10 +955,12 @@ def score_site(
         ),
         evidence=[e for e in evidence if e.evidence_id in used_evidence_ids],
         provenance=Provenance(
-            model_version="0.1.0",
+            model_version=models.primary_version,
             model_kind=model_kind,
-            survival_model_version="1.0.0" if models.survival and models.survival.aft else None,
-            rule_change_model_version="1.0.0" if rule_change is not None else None,
+            survival_model_version=(
+                SURVIVAL_VERSION if models.survival and models.survival.aft else None
+            ),
+            rule_change_model_version=RULE_CHANGE_VERSION if rule_change is not None else None,
             feature_set_version=FEATURE_SET_VERSION,
             dataset_hash=models.dataset.hash(),
             data_as_of=resolved_as_of,
@@ -1033,7 +1055,7 @@ def _unresolved_score(request: SiteRequest, *, models: ServingModels, as_of: dat
             abstention_reasons=[AbstentionReason.unresolved_jurisdiction_chain],
         ),
         provenance=Provenance(
-            model_version="0.1.0",
+            model_version=models.primary_version,
             model_kind="none",
             feature_set_version=FEATURE_SET_VERSION,
             dataset_hash=models.dataset.hash(),

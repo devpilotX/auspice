@@ -213,6 +213,48 @@ class TestPortfolioCountsAddUp:
         )
 
 
+class TestServedVersionIsTheModelVersion:
+    """A published prediction has to name a model version that exists.
+
+    The engine hardcoded "0.1.0", which is ``auspice.__version__``, while every model declares
+    ``MODEL_VERSION = "1.0.0"``. The two were the same string once and then diverged, so a score in the
+    ledger cited a model version no model has ever had. Found by rendering a memo and reading it, and it
+    matters more than most typos because a ledger payload cannot be corrected.
+    """
+
+    def test_no_version_string_is_hardcoded_in_the_engine(self) -> None:
+        from pathlib import Path
+
+        from auspice.score import engine
+
+        source = Path(engine.__file__).read_text(encoding="utf-8")
+        assert 'model_version="0.1.0"' not in source
+        assert 'model_version="1.0.0"' not in source, (
+            "read the version from the serving model rather than repeating it, or the next bump misses here"
+        )
+        assert "model_version=models.primary_version" in source
+
+    def test_the_package_version_and_the_model_version_are_different_things(self) -> None:
+        """Asserted so that making them equal again does not silently make the bug invisible."""
+        import auspice
+        from auspice.models.baseline.base_rate import MODEL_VERSION
+
+        assert auspice.__version__ != MODEL_VERSION, (
+            "if these ever match, the engine reading the wrong one would look correct. Keep the test "
+            "and fix the engine, not the versions."
+        )
+
+    def test_primary_version_follows_primary_kind(self) -> None:
+        from auspice.models.baseline.base_rate import MODEL_VERSION as BASE_RATE
+        from auspice.models.baseline.base_rate import BaseRateModel
+        from auspice.models.dataset import Dataset
+        from auspice.score.engine import ServingModels
+
+        models = ServingModels(dataset=Dataset.__new__(Dataset), base_rate=BaseRateModel())
+        assert models.primary_kind == "base_rate"
+        assert models.primary_version == BASE_RATE
+
+
 class TestDegenerateTrainingCorpus:
     """The bug this class exists for.
 
