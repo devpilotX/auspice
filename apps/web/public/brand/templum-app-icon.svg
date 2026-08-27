@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="templum-icon-title">
+  <title id="templum-icon-title">Auspice</title>
+  <!--
+    App icon. A solid ink field with the mark inset, scaled from the 24 grid by a factor of 16 with a
+    64 unit margin, so the sightline still overshoots and the proportions are unchanged.
+
+    Stroke is 1.4 * 16 = 22.4. Not thickened: at this size the strokes are already well clear of the
+    minimum, and thickening them would make the mark heavier than the wordmark it sits beside.
+  -->
+  <rect width="512" height="512" fill="#14161A" />
+  <g transform="translate(64, 64) scale(16)" fill="none" stroke="#FBFBF9" stroke-width="1.4" stroke-linecap="butt">
+    <rect x="12" y="5" width="9" height="8" fill="#C99A3C" stroke="none" />
+    <rect x="3" y="5" width="18" height="16" />
+    <path d="M3 13H21" />
+    <path d="M12 1.4V22.6" />
+  </g>
+</svg>

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12" width="12" height="12" role="img" aria-labelledby="favicon12-title">
+  <title id="favicon12-title">Auspice</title>
+  <!--
+    Twelve pixels. At this size the horizontal division and the field edge would land on adjacent
+    pixels and merge into a single thick band, so the division is dropped and only the sightline and
+    the read quadrant remain. That is the smallest form the mark survives in, and it is still
+    recognisably a marked field with one quadrant read rather than a generic square.
+
+    Strokes at 1.75, every coordinate on a quarter pixel boundary.
+  -->
+  <g fill="none" stroke="#14161A" stroke-width="1.75" stroke-linecap="butt">
+    <rect x="6" y="2" width="4" height="3.5" fill="#14161A" stroke="none" />
+    <rect x="2" y="2" width="8" height="8" />
+    <path d="M6 0.75V11.25" />
+  </g>
+</svg>

@@ -1,0 +1,242 @@
+/*
+  The design system. Every token lives here and nothing hardcodes a colour anywhere else.
+
+  This is a rating bureau, not a SaaS dashboard. A partner at a lender will paste our output into a
+  credit memo, so the interface is a document that happens to be interactive. It should feel closer to
+  a printed prospectus than to a startup product. Restraint is the brand.
+
+  Four constraints do most of the work, and the fastest way to make this look ordinary is to relax any
+  one of them:
+
+    1. Radius is 2px. Nothing is rounder. Bureaus are not rounded.
+    2. There are no shadows. Separation is done with 1px hairlines, everywhere, without exception.
+    3. One chromatic colour: brass. Status colours exist for state and appear only as 7px dots.
+    4. Probability is never coloured. A green 82 percent reads as approve it, which turns a neutral
+       rating into advice. Section 8.6 of the specification says neutrality is the asset and selling
+       advocacy destroys it permanently. What gets visual weight is the uncertainty, not the outcome.
+
+  Dark mode inverts the relationship, not the colours. It is a real second theme with its own values,
+  not a filter.
+*/
+
+@import "tailwindcss";
+
+@theme {
+  /* ---------------------------------------------------------------------
+     Colour. Light theme.
+     --------------------------------------------------------------------- */
+  --color-paper: #fbfbf9;      /* page background, warm not blue */
+  --color-surface: #ffffff;    /* raised areas, tables, cards */
+  --color-rule: #e4e4e0;       /* hairlines, the main structural device */
+  --color-rule-2: #c9cbc6;     /* stronger dividers, outer frames */
+  --color-ink-3: #8b9199;      /* tertiary text, axis labels */
+  --color-ink-2: #5a6068;      /* secondary text, body at reduced weight */
+  --color-ink: #14161a;        /* primary text, bars, marks */
+  --color-brass: #a8802c;      /* the only chromatic colour */
+  --color-brass-ink: #6e5218;  /* brass as text, for contrast */
+  --color-brass-wash: #faf6ec; /* brass at low opacity, for tags */
+
+  /* State, never judgement. Rendered as 7px dots and in nothing larger. */
+  --color-state-fresh: #3f7d58;
+  --color-state-stale: #b3862b;
+  --color-state-broken: #9c3b32;
+
+  /* ---------------------------------------------------------------------
+     Type. Geist for interface, Geist Mono for every number, Newsreader for
+     display headings and quoted evidence only, nowhere else.
+     --------------------------------------------------------------------- */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
+  --font-serif: var(--font-newsreader), ui-serif, Georgia, serif;
+
+  --text-display-1: 2.75rem;   /* 44 */
+  --text-display-1--line-height: 1.15;
+  --text-display-1--letter-spacing: -0.02em;
+  --text-display-2: 2.125rem;  /* 34 */
+  --text-display-2--line-height: 1.15;
+  --text-display-2--letter-spacing: -0.02em;
+  --text-display-3: 1.875rem;  /* 30 */
+  --text-display-3--line-height: 1.2;
+  --text-display-3--letter-spacing: -0.015em;
+  --text-heading-1: 1.625rem;  /* 26 */
+  --text-heading-1--line-height: 1.25;
+  --text-heading-1--letter-spacing: -0.012em;
+  --text-heading-2: 1.0625rem; /* 17 */
+  --text-heading-2--line-height: 1.4;
+  --text-body: 0.875rem;       /* 14 */
+  --text-body--line-height: 1.5;
+  --text-small: 0.78125rem;    /* 12.5 */
+  --text-small--line-height: 1.5;
+  --text-tiny: 0.6875rem;      /* 11 */
+  --text-tiny--line-height: 1.45;
+  --text-micro: 0.65625rem;    /* 10.5, mono, uppercase, 0.12em tracking */
+  --text-micro--line-height: 1.4;
+  --text-micro--letter-spacing: 0.12em;
+
+  /* The determination number. 76px in mono, and the reason the page has a centre. */
+  --text-determination: 4.75rem;
+  --text-determination--line-height: 1;
+  --text-determination--letter-spacing: -0.03em;
+
+  /* ---------------------------------------------------------------------
+     Space and form. 4px base, 40px table rows, 2px radius, no shadows.
+     --------------------------------------------------------------------- */
+  --radius-none: 0px;
+  --radius-sm: 2px;
+  --radius-DEFAULT: 2px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 2px;
+  --radius-full: 2px;
+
+  --spacing: 0.25rem;
+
+  --shadow-2xs: none;
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow-DEFAULT: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
+  --shadow-2xl: none;
+  --shadow-inner: none;
+
+  /* Motion exists in exactly two places: the evidence drawer at 180ms and the
+     determination number counting into place once on first load at 400ms. */
+  --duration-drawer: 180ms;
+  --duration-count: 400ms;
+  --ease-drawer: cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+/* -----------------------------------------------------------------------
+   Semantic aliases. Components reference these, never a raw hex.
+   ----------------------------------------------------------------------- */
+:root {
+  --row-height: 40px;
+  --hairline: 1px;
+  --frame: var(--color-rule-2);
+
+  --bg-page: var(--color-paper);
+  --bg-raised: var(--color-surface);
+  --bg-inset: #f4f4f1;
+  --bg-tag: var(--color-brass-wash);
+
+  --text-primary: var(--color-ink);
+  --text-secondary: var(--color-ink-2);
+  --text-tertiary: var(--color-ink-3);
+  --text-accent: var(--color-brass-ink);
+
+  --line-hairline: var(--color-rule);
+  --line-strong: var(--color-rule-2);
+
+  --focus-inner: var(--color-paper);
+  --focus-outer: var(--color-ink);
+
+  color-scheme: light;
+}
+
+/* -----------------------------------------------------------------------
+   Dark mode. A real second theme. Background 0E1013, surface 16191D, rules
+   at 262A2F, ink at E8E8E4, and brass lifts to C99A3C for contrast.
+   ----------------------------------------------------------------------- */
+.dark {
+  --color-paper: #0e1013;
+  --color-surface: #16191d;
+  --color-rule: #262a2f;
+  --color-rule-2: #363b42;
+  --color-ink-3: #7c838c;
+  --color-ink-2: #a9afb7;
+  --color-ink: #e8e8e4;
+  --color-brass: #c99a3c;
+  --color-brass-ink: #d9ae57;
+  --color-brass-wash: #1e1b14;
+
+  --color-state-fresh: #59a077;
+  --color-state-stale: #cfa04a;
+  --color-state-broken: #c2564c;
+
+  --bg-inset: #1b1f24;
+  --focus-inner: var(--color-paper);
+  --focus-outer: var(--color-ink);
+
+  color-scheme: dark;
+}
+
+/* -----------------------------------------------------------------------
+   Base.
+   ----------------------------------------------------------------------- */
+@layer base {
+  * {
+    border-color: var(--line-hairline);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background-color: var(--bg-page);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: 1.5;
+    font-feature-settings: "kern" 1, "liga" 1;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Every number, identifier and timestamp is mono with tabular figures, so columns
+     align when the page is printed into a credit memo. */
+  [data-numeric],
+  .numeric {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1, "zero" 1;
+  }
+
+  /* The double ring focus pattern. Visible on every interactive element, because this
+     product will be used by institutions that get audited. */
+  :focus-visible {
+    outline: 2px solid var(--focus-outer);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 2px var(--focus-inner);
+  }
+
+  ::selection {
+    background: var(--color-brass-wash);
+    color: var(--text-primary);
+  }
+
+  /* Nothing bounces, nothing fades in on scroll, nothing has a gradient. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* -----------------------------------------------------------------------
+   Print. The report is a document, so it has to print as one.
+   ----------------------------------------------------------------------- */
+@media print {
+  :root {
+    --bg-page: #ffffff;
+    --bg-raised: #ffffff;
+  }
+
+  body {
+    font-size: 10pt;
+  }
+
+  [data-no-print] {
+    display: none !important;
+  }
+
+  /* A driver row and its evidence must not be split across a page break. */
+  [data-keep-together] {
+    break-inside: avoid;
+  }
+}

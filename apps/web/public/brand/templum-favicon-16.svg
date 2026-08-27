@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" role="img" aria-labelledby="favicon16-title">
+  <title id="favicon16-title">Auspice</title>
+  <!--
+    Optically corrected for 16px. Not the 24 grid scaled down.
+
+    At sixteen pixels a 1.4 stroke scaled by 16/24 becomes 0.93, which lands between device pixels and
+    renders as a grey smear. So the strokes thicken to 1.5 and every coordinate sits on a half pixel,
+    which is where a 1.5 stroke is crisp. The proportions shift slightly as a result, and that is the
+    correct trade: a mark that disappears at favicon size is not a mark.
+
+    The field also tightens from an 18 by 16 box to 13 by 11, because the original aspect leaves the
+    sightline overshoot with nowhere to go inside sixteen pixels.
+  -->
+  <g fill="none" stroke="#14161A" stroke-width="1.5" stroke-linecap="butt">
+    <rect x="8" y="2.75" width="5.25" height="4.75" fill="#14161A" stroke="none" />
+    <rect x="2.75" y="2.75" width="10.5" height="10.5" />
+    <path d="M2.75 7.5H13.25" />
+    <path d="M8 1V15" />
+  </g>
+</svg>

@@ -1,0 +1,20 @@
+{
+  "name": "@auspice/shared-types",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TypeScript types generated from the API's OpenAPI document. One source of truth.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "openapi-typescript ./openapi.json -o ./src/generated/api.ts",
+    "generate:live": "openapi-typescript http://127.0.0.1:8000/openapi.json -o ./src/generated/api.ts"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.9.1",
+    "typescript": "5.9.2"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "auspice",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "npm run dev --workspace apps/web",
+    "build": "npm run build --workspace apps/web",
+    "lint": "npm run lint --workspace apps/web",
+    "typecheck": "npm run typecheck --workspace apps/web",
+    "types:generate": "npm run generate --workspace packages/shared-types"
+  }
+}
