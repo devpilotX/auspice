@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
+from app.schemas import PortfolioResponse, PortfolioRow
 from auspice.domain import AbstentionReason, Confidence, JurisdictionRole, Relief, UseClass
 from auspice.models.eval.thresholds import (
     ABSTAIN_MAX_COMPARABLES,
@@ -77,6 +78,139 @@ class TestAbstentionRule:
             staleness_days=inputs.staleness_days,
         )
         assert not decide(relaxed).abstained
+
+
+class TestPortfolioCountsAddUp:
+    """The summary line above a ranked list, which a reader trusts before they read the rows.
+
+    ``scored`` counted every row including the abstentions, so a portfolio where nothing could be scored
+    reported three scored and three abstained out of three sites. It is invisible in the JSON and obvious
+    the moment the two numbers sit next to each other on a screen, which is where it was found. A header
+    that contradicts itself discredits every number under it.
+    """
+
+    @staticmethod
+    def _row(*, abstained: bool, probability: float | None, public_id: str) -> PortfolioRow:
+        return PortfolioRow(
+            label=public_id,
+            jurisdiction="Somewhere County",
+            approval_probability=probability,
+            credible_interval_80=None if probability is None else (0.3, 0.6),
+            abstained=abstained,
+            months_p50=None,
+            rule_change_probability=None,
+            data_depth=0,
+            stale=False,
+            public_id=public_id,
+        )
+
+    def test_a_valid_response_constructs(self) -> None:
+
+        response = PortfolioResponse(
+            ranked=[
+                self._row(abstained=False, probability=0.45, public_id="a"),
+                self._row(abstained=True, probability=None, public_id="b"),
+            ],
+            submitted=2,
+            scored=1,
+            abstained=1,
+        )
+        assert response.scored + response.abstained == response.submitted
+
+    def test_the_all_abstained_case_that_exposed_it(self) -> None:
+
+        rows = [self._row(abstained=True, probability=None, public_id=str(n)) for n in range(3)]
+        response = PortfolioResponse(ranked=rows, submitted=3, scored=0, abstained=3)
+        assert response.scored == 0
+
+        with pytest.raises(ValidationError, match="does not equal"):
+            PortfolioResponse(ranked=rows, submitted=3, scored=3, abstained=3)
+
+    def test_a_row_count_that_disagrees_is_refused(self) -> None:
+
+        with pytest.raises(ValidationError, match="Every site gets a row"):
+            PortfolioResponse(
+                ranked=[self._row(abstained=False, probability=0.5, public_id="a")],
+                submitted=2,
+                scored=2,
+                abstained=0,
+            )
+
+    def test_an_abstention_count_that_disagrees_with_the_rows_is_refused(self) -> None:
+
+        with pytest.raises(ValidationError, match="the rows contain"):
+            PortfolioResponse(
+                ranked=[
+                    self._row(abstained=True, probability=None, public_id="a"),
+                    self._row(abstained=True, probability=None, public_id="b"),
+                ],
+                submitted=2,
+                scored=1,
+                abstained=1,
+            )
+
+    def test_an_abstained_row_cannot_carry_a_probability(self) -> None:
+        """Asserted on the row rather than the summary, because this is the one that misleads silently.
+
+        Built from a dict so the validator runs on construction, which is the path a response body takes.
+        """
+        from app.schemas import PortfolioRow
+
+        base = {
+            "label": "a",
+            "jurisdiction": "Somewhere County",
+            "months_p50": None,
+            "rule_change_probability": None,
+            "data_depth": 0,
+            "stale": False,
+            "public_id": "a",
+        }
+
+        with pytest.raises(ValidationError, match="cannot carry a probability"):
+            PortfolioRow.model_validate(
+                {
+                    **base,
+                    "approval_probability": 0.12,
+                    "credible_interval_80": (0.0, 0.3),
+                    "abstained": True,
+                }
+            )
+
+        with pytest.raises(ValidationError, match="point estimate posing as a range"):
+            PortfolioRow.model_validate(
+                {
+                    **base,
+                    "approval_probability": 0.55,
+                    "credible_interval_80": None,
+                    "abstained": False,
+                }
+            )
+
+        with pytest.raises(ValidationError, match="inverted"):
+            PortfolioRow.model_validate(
+                {
+                    **base,
+                    "approval_probability": 0.55,
+                    "credible_interval_80": (0.8, 0.2),
+                    "abstained": False,
+                }
+            )
+
+    def test_the_router_computes_scored_by_subtraction(self) -> None:
+        """Read the source, because the arithmetic is one line and easy to reintroduce.
+
+        The validator catches a wrong count at runtime. This catches the specific wrong expression, so a
+        reviewer sees why it is written the way it is.
+        """
+        from pathlib import Path
+
+        import app.routers.score as score_router
+
+        source = Path(score_router.__file__).read_text(encoding="utf-8")
+        assert "scored=len(rows) - abstained" in source
+        assert "scored=len(rows)," not in source, (
+            "scored must exclude abstentions, or the summary counts a refusal as an answer"
+        )
 
 
 class TestDegenerateTrainingCorpus:

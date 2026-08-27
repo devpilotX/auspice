@@ -68,6 +68,7 @@ export const viewport: Viewport = {
 };
 
 const NAV = [
+  { href: "/portfolio", label: "Portfolio" },
   { href: "/accuracy", label: "Accuracy" },
   { href: "/jurisdictions", label: "Coverage" },
   { href: "/method", label: "Method" },

@@ -224,6 +224,10 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
+# apps/api is a deployable, not a library, so it is not installed into the environment. Adding it here
+# rather than importing it through a path hack in a test means the API's own schemas can be unit tested
+# the same way as everything else, and mypy already reads it from the same location.
+pythonpath = ["apps/api"]
 addopts = "-ra --strict-markers --strict-config"
 markers = [
     "db: requires a live PostgreSQL with PostGIS",

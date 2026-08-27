@@ -122,7 +122,12 @@ async def score_portfolio(
     # refusing to answer indistinguishable from answering badly.
     rows.sort(key=lambda r: (r.abstained, -(r.approval_probability or 0.0)))
 
-    return PortfolioResponse(ranked=rows, scored=len(rows), abstained=abstained)
+    return PortfolioResponse(
+        ranked=rows,
+        submitted=len(rows),
+        scored=len(rows) - abstained,
+        abstained=abstained,
+    )
 
 
 @router.get("/score/as-of", summary="The date the served data is current to")

@@ -923,6 +923,7 @@
       "PortfolioResponse": {
         "properties": {
           "abstained": {
+            "description": "How many we refused to put a number on.",
             "title": "Abstained",
             "type": "integer"
           },
@@ -939,12 +940,19 @@
             "type": "array"
           },
           "scored": {
+            "description": "How many carry a probability. Excludes abstentions, so scored plus abstained equals submitted.",
             "title": "Scored",
+            "type": "integer"
+          },
+          "submitted": {
+            "description": "How many sites were in the request.",
+            "title": "Submitted",
             "type": "integer"
           }
         },
         "required": [
           "ranked",
+          "submitted",
           "scored",
           "abstained"
         ],

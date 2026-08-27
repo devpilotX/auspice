@@ -67,13 +67,48 @@ class PortfolioRow(BaseModel):
     stale: bool
     public_id: str
 
+    @model_validator(mode="after")
+    def an_abstention_carries_no_number(self) -> PortfolioRow:
+        """The rules the score object enforces, enforced again on the flat row.
+
+        ``Score`` refuses to construct an abstention with a probability. This is a separate DTO built by
+        hand from a score's fields, so it inherited none of that, and it is the shape a ranked table is
+        drawn from. An abstention arriving here with a number would render as an ordinary row near the
+        bottom of the list, which is the one malformation nobody would spot: it reads as a pessimistic
+        answer rather than as no answer.
+        """
+        if self.abstained and self.approval_probability is not None:
+            raise ValueError(
+                "an abstention cannot carry a probability. Refusing to answer and answering low are "
+                "different claims and a ranked list cannot show the difference."
+            )
+        if self.abstained and self.credible_interval_80 is not None:
+            raise ValueError("an abstention cannot carry an interval")
+        if self.approval_probability is not None and self.credible_interval_80 is None:
+            raise ValueError(
+                "a probability without an interval is a point estimate posing as a range"
+            )
+        if self.approval_probability is not None and not 0.0 <= self.approval_probability <= 1.0:
+            raise ValueError("a probability must be between zero and one")
+        if self.credible_interval_80 is not None:
+            low, high = self.credible_interval_80
+            if low > high:
+                raise ValueError("the interval is inverted")
+        return self
+
 
 class PortfolioResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     ranked: list[PortfolioRow]
-    scored: int
-    abstained: int
+    submitted: int = Field(description="How many sites were in the request.")
+    scored: int = Field(
+        description=(
+            "How many carry a probability. Excludes abstentions, so scored plus abstained equals "
+            "submitted."
+        )
+    )
+    abstained: int = Field(description="How many we refused to put a number on.")
     note: str = Field(
         default=(
             "Ranked by approval probability. Abstentions sort last and carry no number, because a "
@@ -81,6 +116,34 @@ class PortfolioResponse(BaseModel):
             "answer indistinguishable from answering badly."
         )
     )
+
+    @model_validator(mode="after")
+    def counts_account_for_every_site(self) -> PortfolioResponse:
+        """The three counts have to add up, and they have to match the rows.
+
+        ``scored`` previously counted every row including the abstentions, so a portfolio where nothing
+        could be scored reported three scored and three abstained out of three sites. Nobody reading the
+        API would have caught it; the numbers are only obviously wrong once they are side by side on a
+        screen, which is where it was found. Asserting the arithmetic here means the next version of that
+        mistake fails at the boundary rather than being rendered.
+        """
+        if self.scored + self.abstained != self.submitted:
+            raise ValueError(
+                f"{self.scored} scored plus {self.abstained} abstained does not equal "
+                f"{self.submitted} submitted"
+            )
+        if len(self.ranked) != self.submitted:
+            raise ValueError(
+                f"{len(self.ranked)} rows for {self.submitted} submitted sites. Every site gets a row, "
+                "including the ones we would not score."
+            )
+        actual_abstentions = sum(1 for row in self.ranked if row.abstained)
+        if actual_abstentions != self.abstained:
+            raise ValueError(
+                f"the summary says {self.abstained} abstentions and the rows contain "
+                f"{actual_abstentions}"
+            )
+        return self
 
 
 class JurisdictionSummary(BaseModel):

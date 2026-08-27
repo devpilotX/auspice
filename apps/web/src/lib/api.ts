@@ -13,7 +13,9 @@
 
 import { z } from "zod";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+import { apiBaseUrl } from "./api-origin";
+
+const BASE_URL = apiBaseUrl();
 
 const probability = z.number().min(0).max(1);
 
@@ -243,6 +245,68 @@ export type Accuracy = z.infer<typeof accuracySchema>;
 export type JurisdictionSummary = z.infer<typeof jurisdictionSummarySchema>;
 export type JurisdictionProfile = z.infer<typeof jurisdictionProfileSchema>;
 
+/* ---------------------------------------------------------------------------
+   Portfolio. Section 5.4 product 2.
+   --------------------------------------------------------------------------- */
+
+export const portfolioRowSchema = z
+  .object({
+    label: z.string().nullable(),
+    jurisdiction: z.string(),
+    approval_probability: probability.nullable(),
+    credible_interval_80: z.tuple([probability, probability]).nullable(),
+    abstained: z.boolean(),
+    months_p50: z.number().nonnegative().nullable(),
+    rule_change_probability: probability.nullable(),
+    data_depth: z.number().int().nonnegative(),
+    stale: z.boolean(),
+    public_id: z.string(),
+  })
+  // The same rule the score object enforces server side, enforced again here. An abstention carrying a
+  // number is the one malformation that would be invisible on screen: the row would look like a low
+  // score, and refusing to answer would become indistinguishable from answering pessimistically.
+  .refine((row) => !row.abstained || row.approval_probability === null, {
+    message: "an abstention cannot carry a probability",
+    path: ["approval_probability"],
+  })
+  .refine((row) => row.approval_probability === null || row.credible_interval_80 !== null, {
+    message: "a probability cannot be shown without its interval",
+    path: ["credible_interval_80"],
+  });
+
+export const portfolioResponseSchema = z
+  .object({
+    ranked: z.array(portfolioRowSchema),
+    submitted: z.number().int().nonnegative(),
+    scored: z.number().int().nonnegative(),
+    abstained: z.number().int().nonnegative(),
+    note: z.string(),
+  })
+  // Checked again on the way in. The API asserts this too, and a summary that does not add up is worth
+  // refusing twice: a header reading "3 scored, 3 not scored" out of 3 sites destroys confidence in
+  // every number under it, and this is the layer that decides whether it gets drawn.
+  .refine((value) => value.scored + value.abstained === value.submitted, {
+    message: "the counts do not add up to the number of sites submitted",
+    path: ["scored"],
+  })
+  .refine((value) => value.ranked.length === value.submitted, {
+    message: "every submitted site gets a row, including the ones we would not score",
+    path: ["ranked"],
+  });
+
+export const siteInputSchema = z.object({
+  label: z.string().max(120).nullable(),
+  jurisdiction: z.string().min(1),
+  use_class: z.string().min(1),
+  relief_sought: z.array(z.string()).min(1).max(8),
+  acres: z.number().positive().max(1_000_000).nullable(),
+  capacity_mw: z.number().positive().max(100_000).nullable(),
+});
+
+export type PortfolioRow = z.infer<typeof portfolioRowSchema>;
+export type PortfolioResponse = z.infer<typeof portfolioResponseSchema>;
+export type SiteInput = z.infer<typeof siteInputSchema>;
+
 export class ApiUnavailable extends Error {
   constructor(
     readonly path: string,
@@ -292,10 +356,81 @@ export async function get<T>(
   return parsed.data;
 }
 
+/**
+ * Post and validate. Distinguishes the three outcomes a caller has to tell apart: a valid answer, a
+ * request the API rejected, and an API that did not answer at all.
+ *
+ * `get` collapses every failure to null, which is right for a public page whose only recourse is to say
+ * the data is unavailable. A form needs more. "The API is down" and "you asked for a jurisdiction we do
+ * not cover" call for different words on screen, and showing the same message for both would send
+ * someone looking for a network problem that does not exist.
+ */
+export type PostResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; kind: "rejected"; status: number; detail: string }
+  | { ok: false; kind: "unreachable" }
+  | { ok: false; kind: "malformed" };
+
+export async function post<T>(
+  path: string,
+  body: unknown,
+  schema: z.ZodType<T>,
+): Promise<PostResult<T>> {
+  let response: Response;
+  try {
+    response = await fetch(`${BASE_URL}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+  } catch {
+    return { ok: false, kind: "unreachable" };
+  }
+
+  if (!response.ok) {
+    return { ok: false, kind: "rejected", status: response.status, detail: await detailOf(response) };
+  }
+
+  const parsed = schema.safeParse(await response.json());
+  if (!parsed.success) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error(`response failed validation for ${path}`, parsed.error.issues);
+    }
+    return { ok: false, kind: "malformed" };
+  }
+  return { ok: true, data: parsed.data };
+}
+
+/** Read the most specific message the API offered, falling back to the status line. */
+async function detailOf(response: Response): Promise<string> {
+  try {
+    const payload: unknown = await response.json();
+    if (payload === null || typeof payload !== "object" || !("detail" in payload)) {
+      return `The API returned ${response.status}.`;
+    }
+    const raw = (payload as { detail: unknown }).detail;
+    if (typeof raw === "string") return raw;
+    // FastAPI validation errors arrive as an array of per field objects. Naming the field beats a
+    // generic message that leaves someone guessing which of fourteen sites is wrong.
+    if (Array.isArray(raw) && raw.length > 0) {
+      const first = raw[0] as { loc?: unknown[]; msg?: unknown };
+      const where = Array.isArray(first.loc) ? first.loc.slice(1).join(".") : "";
+      const message = typeof first.msg === "string" ? first.msg : "is not valid";
+      return where === "" ? message : `${where}: ${message}`;
+    }
+    return `The API returned ${response.status}.`;
+  } catch {
+    // A body that is not JSON is not worth guessing at.
+    return `The API returned ${response.status}.`;
+  }
+}
+
 export const api = {
   accuracy: () => get("/v1/public/accuracy", accuracySchema),
   jurisdictions: () => get("/v1/public/jurisdictions", z.array(jurisdictionSummarySchema)),
   jurisdiction: (slug: string) =>
     get(`/v1/public/jurisdictions/${slug}`, jurisdictionProfileSchema),
   methodology: () => get("/v1/public/methodology", z.record(z.string(), z.unknown())),
+  portfolio: (sites: SiteInput[]) => post("/v1/portfolio", { sites }, portfolioResponseSchema),
 };
