@@ -160,6 +160,10 @@ ignore = [
 "tests/**" = ["PLR2004", "ARG001", "ARG002"]
 "src/auspice/cli/**" = ["PLR0913", "B008"]  # typer uses defaults as option declarations
 "apps/api/**" = ["B008"]                     # fastapi Depends() in defaults is the idiom
+# Every adapter implements the same four method signatures whether or not it needs each argument. A code
+# host has no meetings and Accela has no media, and their methods still take the full signature, because a
+# Protocol whose implementations have different arities is not one interface.
+"src/auspice/pipeline/adapters/**" = ["ARG002"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["auspice"]
