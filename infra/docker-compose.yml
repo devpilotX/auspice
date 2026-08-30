@@ -85,5 +85,38 @@ services:
       timeout: 5s
       retries: 5
 
+  # The only service exposed off the machine. The database and the API both bind to loopback, so before
+  # this existed nothing could reach either from outside and the stack had no way to serve anyone.
+  #
+  # Caddy rather than nginx for one reason: it obtains and renews a certificate itself from the domain
+  # name and needs no certbot, no cron entry and no renewal that silently stops working. For a single
+  # operator that is the difference between TLS that keeps working and TLS that expires on a Sunday.
+  #
+  # NOT VERIFIED. Docker is not installed on the machine this was written on, so this service has never
+  # been started and the certificate flow has never run. It is written from the documented configuration
+  # rather than from an observed working stack. Treat the first deploy as the test.
+  proxy:
+    image: caddy:2.10-alpine
+    container_name: auspice-proxy
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      # The public hostname. Caddy uses it both to route and to request the certificate, so a wrong value
+      # fails visibly at startup rather than serving the wrong thing.
+      AUSPICE_PUBLIC_HOST: ${AUSPICE_PUBLIC_HOST:?set the public hostname, for example api.permissionbureau.com}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and the account key. Without a volume Caddy requests a new certificate on every
+      # restart and will be rate limited by the certificate authority within a day.
+      - caddy-data:/data
+      - caddy-config:/config
+
 volumes:
   pgdata:
+  caddy-data:
+  caddy-config:
