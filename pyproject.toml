@@ -69,6 +69,18 @@ api = [
 transcribe = [
     "faster-whisper>=1.0.3",
 ]
+memo = [
+    # Headless Chromium, for rendering the committee memo HTML to PDF. The HTML is the artefact of
+    # record and the PDF is a rendering of it, so this is optional: `auspice memo render` writes the
+    # HTML either way and raises StageUnavailableError for the PDF when this extra is absent.
+    #
+    # This extra is the fix for a broken instruction rather than a new feature. memo/generator.py has
+    # told the operator to run `uv sync --extra memo` since it was written, and no such extra existed,
+    # so the priced deliverable could not be produced and the error message named a command that does
+    # nothing. Installing the package is not sufficient on its own: Playwright downloads its browser
+    # separately, with `playwright install chromium`, which infra/Dockerfile.api does at build time.
+    "playwright>=1.55",
+]
 
 [project.scripts]
 auspice = "auspice.cli.main:app"
