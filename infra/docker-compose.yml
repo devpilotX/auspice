@@ -64,6 +64,17 @@ services:
       AUSPICE_RAW_SECRET_ACCESS_KEY: ${AUSPICE_RAW_SECRET_ACCESS_KEY}
       AUSPICE_CRAWLER_CONTACT: ${AUSPICE_CRAWLER_CONTACT}
       AUSPICE_API_KEYS: ${AUSPICE_API_KEYS}
+      # Required, and it has no default here on purpose. config.py falls back to
+      # http://localhost:3000,http://127.0.0.1:3000, which is correct for development and refuses every
+      # request from a deployed web origin. A production stack that inherited that default served an API
+      # the interface could not call, and the browser reported it as a network error rather than as a
+      # policy refusal, so it looked like the API was down. Compose fails fast on an unset variable
+      # instead, because a stack that starts and cannot be called is worse than one that does not start.
+      AUSPICE_API_CORS_ORIGINS: ${AUSPICE_API_CORS_ORIGINS:?set the web origin, comma separated, no trailing slash}
+      # On, because the proxy below overwrites X-Forwarded-For. Only ever turn this on when something
+      # upstream is guaranteed to overwrite it: a client sets that header freely, so trusting it without a
+      # proxy in front hands anyone an unlimited rate limit allowance by rotating a string.
+      AUSPICE_API_TRUST_FORWARDED_FOR: "true"
       AUSPICE_LLM_PROVIDER: ${AUSPICE_LLM_PROVIDER:-none}
       AUSPICE_LLM_API_KEY: ${AUSPICE_LLM_API_KEY:-}
     ports:
