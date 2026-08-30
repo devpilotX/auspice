@@ -27,7 +27,6 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app import ratelimit
-from app.deps import Db
 from app.routers import public, score, tiles
 from app.schemas import HealthResponse
 from app.security import get_key_ring
@@ -163,27 +162,51 @@ app.include_router(tiles.router)
 
 
 @app.get("/healthz", response_model=HealthResponse, tags=["operations"])
-async def healthz(request: Request, conn: Db) -> HealthResponse:
-    """Liveness plus the two things that actually matter: is the ledger intact, and can we score."""
+def healthz(request: Request) -> HealthResponse:
+    """Liveness plus the two things that actually matter: is the ledger intact, and can we score.
+
+    Two things about the shape of this handler, both of them repairs.
+
+    **The connection is acquired here rather than through the ``Db`` dependency.** A dependency that
+    cannot connect raises before the handler body runs, so the one endpoint written to describe a
+    degraded database answered 500 instead. A health check that cannot report the condition it exists to
+    report is worse than no health check, because a monitor reads 500 as "the service is broken" rather
+    than as "the database is down", and those call for different people to be woken up.
+
+    **Not ``async def``.** Everything below is synchronous: a database round trip and a full ledger
+    verification. On the event loop that blocks every other request in the process, including this one
+    when something else is already blocking it. FastAPI runs a plain ``def`` in its threadpool.
+    """
     from auspice import ledger
 
     detail: list[str] = []
-    database = True
+    database = False
+    chain_ok: bool | None = None
+
     try:
-        conn.execute(text("SELECT 1"))
+        with transaction() as conn:
+            conn.execute(text("SELECT 1"))
+            # Set only after the round trip succeeds. This flag was initialised to True and never
+            # assigned in the failure path, so an unreachable database reported database=true and
+            # status=ok. The bug was invisible because the next statement raised first and the 500 hid it.
+            database = True
+
+            try:
+                report = ledger.verify(conn)
+                chain_ok = report.ok
+                if not report.ok:
+                    detail.append(f"ledger broken at sequence {report.broken_at}: {report.reason}")
+            except Exception:
+                # A reachable database whose ledger cannot be read is a different failure from an
+                # unreachable one, and merging them would send the operator to the wrong place.
+                log.exception("health check could not verify the ledger")
+                detail.append("ledger verification failed")
     except Exception:
         # The driver's message names the user, host and port, and this endpoint is unauthenticated. That
         # is infrastructure disclosure for no benefit: a monitor needs to know the database is down, and
         # an operator reads the reason in the log where it belongs.
         log.exception("health check could not reach the database")
         detail.append("database unreachable")
-
-    chain_ok: bool | None = None
-    if database:
-        report = ledger.verify(conn)
-        chain_ok = report.ok
-        if not report.ok:
-            detail.append(f"ledger broken at sequence {report.broken_at}: {report.reason}")
 
     models = getattr(request.app.state, "models", None)
     decisions = models.dataset.decided.height if models else 0
@@ -192,7 +215,14 @@ async def healthz(request: Request, conn: Db) -> HealthResponse:
     elif decisions == 0:
         detail.append("no decided applications with verified evidence, so every score will abstain")
 
-    healthy = database and models is not None and chain_ok is not False
+    # `chain_ok is True` rather than `is not False`. Three states are possible and the distinction is the
+    # whole reason this endpoint exists: True means the chain verified, False means it is broken, and None
+    # means we could not find out. `is not False` counted "could not find out" as healthy, so a database
+    # that answered while its ledger could not be read reported status ok with a detail line underneath
+    # saying verification had failed. The previous version of this handler carried the same expression and
+    # the state was unreachable, because the exception escaped as a 500 instead. Catching the exception
+    # made it reachable, and the test written for it caught this on the first full run.
+    healthy = database and models is not None and chain_ok is True
     return HealthResponse(
         status="ok" if healthy else "degraded",
         version=__version__,
