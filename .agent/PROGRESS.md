@@ -87,3 +87,25 @@ Two tooling notes that cost time and are recorded so they are not rediscovered:
         Baseline fully established. Beginning Task 2 artifacts.
 [19:35] .agent/RESTORE.md and .agent/PROGRESS.md written.
 ```
+
+[19:45] Task 3 attempted with Vitest. 60 tests written and passing, guard proven by
+        execution: a blockquote injected into NEUTRALITY.md failed exactly one test naming
+        line 141, revert restored 60 of 60 byte identical.
+[19:52] ERROR FOUND IN MY OWN AUDIT. apps/web/tests/unit already held 242 lines of unit
+        tests for the same two files, running in playwright.config.ts's 'unit' project,
+        which carries an explicit decision against a second test framework. Finding P1-6
+        was false. Cause: asserted from a grep for vitest and jest plus a read of ci.yml;
+        apps/web/tests appeared in an early listing and was never opened.
+[19:55] Reverted e39f8cf in e5b0559 with the reason in the commit message rather than
+        quietly. P1-6 withdrawn in AUDIT_REPORT.md under a new Corrections section.
+[20:05] Ported the 14 genuinely new cases into the existing specs. Unit project 21 -> 35.
+[20:10] Task 4 done. CI web job gains chromium install and the unit project between type
+        check and build. New visual job on windows-latest, because every committed
+        baseline is -win32.png and Playwright suffixes snapshots by platform, so an ubuntu
+        runner would fail on a missing snapshot rather than a real regression. Recorded as
+        P1-8, mitigated not fixed.
+[20:12] YAML validated by parse: 4 jobs, python 12 steps, web 14, visual 7, writing 3.
+        Battery green: eslint, typecheck, writing rules, 35 unit tests.
+        checkpoint/004-ci-harness. Cumulative against baseline: 16 files, 2210 insertions,
+        0 deletions. main still at 2d8efdf.
+        PHASE A COMPLETE. Next: Phase B ship blockers, Task 5.

@@ -12,9 +12,9 @@ this file against reality before continuing, and resume at the first TODO.
 |---|---|---|---|
 | 1 | Checkpoint and backup | DONE | bundle verified twice, scratch clone at `2d8efdf` with 218 files, 87 ignored files snapshotted |
 | 1b | Baseline battery measured before any change | DONE | recorded in `PROGRESS.md`, 11 layers, one red (ENV-01) diagnosed and fixed |
-| 2 | `.agent/` scaffold and `AUDIT_REPORT.md` | DOING | 8 of 9 files written |
-| 3 | Vitest plus tests for `site-list.ts` and `published-doc.ts` | TODO | |
-| 4 | Wire `test` and `test:visual` into CI | TODO | |
+| 2 | `.agent/` scaffold and `AUDIT_REPORT.md` | DONE | 9 files plus the report, committed at checkpoint/002 |
+| 3 | Unit coverage for `site-list.ts` and `published-doc.ts` | DONE | tests already existed; Vitest attempt reverted, 14 cases ported, unit project 21 to 35 |
+| 4 | Wire the Playwright suite into CI | DONE | web job runs the unit project; new visual job on windows-latest; YAML validated by parse |
 
 ## Phase B, ship blockers
 
