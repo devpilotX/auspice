@@ -94,6 +94,14 @@ class VerificationReport:
     reason: str | None = None
     head: str | None = None
     daily_roots: dict[str, str] = field(default_factory=dict)
+    scope: str = "full"
+    """Which check produced this: ``full`` for the whole chain, ``head`` for the constant cost probe.
+
+    Carried on the report rather than left to the caller to remember, because the two answer different
+    questions and a shallow ok is not a full ok. A consumer that publishes an accuracy claim needs the
+    full walk; a liveness probe does not. Without this field the difference is invisible at the point it
+    matters, which is where someone would quote it.
+    """
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -103,6 +111,7 @@ class VerificationReport:
             "reason": self.reason,
             "head": self.head,
             "daily_roots": self.daily_roots,
+            "scope": self.scope,
         }
 
 
@@ -165,6 +174,114 @@ def publish(conn: Connection, *, prediction_id: int, payload: dict[str, Any]) ->
     )
 
 
+def _completeness_breach(conn: Connection, highest_present: int) -> tuple[int, str] | None:
+    """Detect entries deleted from the end of the chain. Constant cost, regardless of ledger size.
+
+    Everything the hash walk proves is that the entries present are internally consistent and correctly
+    chained, which is not the same as proving none are missing.
+
+    A deletion in the middle breaks the next entry's ``prev_hash``, so the walk already catches it. A
+    deletion at the tail is not caught: entries 1 to 3 of an original 1 to 4 form a shorter chain that
+    verifies perfectly. That is the deletion someone would actually make, because the most recent
+    predictions are the ones that have just been proved wrong.
+
+    The sequence generator is the check. Postgres only advances it, so it remembers the highest sequence
+    ever issued even after the row is gone. If it has issued more than the table holds, entries were
+    removed from the end.
+
+    This is evidence, not proof: someone with the right to run ``setval`` can rewind the counter, and
+    someone who can do that can do anything. Detecting the deletion is what matters, and the external
+    anchor in ``daily_root`` is what makes it undeniable.
+
+    Extracted from ``verify`` so that the cheap head check and the full walk apply the identical rule. A
+    second copy of this would be a second chance to get it wrong, and the cheap path exists precisely to
+    be run often, which makes it the one more likely to be trusted.
+
+    Returns ``(broken_at, reason)`` when entries are missing, or None when the tail is intact.
+    """
+    issued = (
+        conn.execute(text("SELECT last_value, is_called FROM ledger_entry_seq_seq"))
+        .mappings()
+        .first()
+    )
+    if issued is None or not issued["is_called"]:
+        return None
+
+    highest_issued = int(issued["last_value"])
+    if highest_present >= highest_issued:
+        return None
+
+    missing = highest_issued - highest_present
+    return (
+        highest_present + 1,
+        (
+            f"the ledger ends at sequence {highest_present}, but sequence {highest_issued} has been "
+            f"issued. {missing} entry or entries were deleted from the end of the chain."
+        ),
+    )
+
+
+def verify_head(conn: Connection) -> VerificationReport:
+    """A constant cost integrity check. What a health probe can afford to run on every request.
+
+    ``verify`` reads every row and rehashes every payload, so its cost grows with the ledger. That is
+    correct for publishing and for the accuracy page, and wrong for a liveness probe: the health endpoint
+    is unauthenticated and deliberately exempt from rate limiting, so an O(entries) body there means the
+    denial of service surface grows in exact proportion to the one metric the specification says must
+    never stall. The better the company does at publishing predictions, the cheaper it becomes to hurt.
+
+    What this catches: a tail deletion, by the same rule the full walk uses, and corruption of the most
+    recent entry, by rehashing it. Both are constant cost.
+
+    What it does not catch, stated plainly rather than left to be assumed: tampering in the middle of the
+    chain. Only the full walk finds that, and it still runs at startup through ``require_intact``, before
+    every publish, and behind the rate limiter on the accuracy page. This is a cheap smoke test, not a
+    replacement, and ``scope`` on the report says which one produced it.
+    """
+    report = VerificationReport(scope="head")
+
+    row = conn.execute(
+        select(
+            schema.ledger_entry.c.seq,
+            schema.ledger_entry.c.payload,
+            schema.ledger_entry.c.payload_hash,
+            schema.ledger_entry.c.prev_hash,
+            schema.ledger_entry.c.entry_hash,
+        )
+        .order_by(schema.ledger_entry.c.seq.desc())
+        .limit(1)
+    ).first()
+
+    if row is None:
+        # An empty ledger is intact. It is also the state a tail deletion of everything would leave, which
+        # is why the completeness check still runs against a highest_present of zero.
+        breach = _completeness_breach(conn, 0)
+        if breach is not None:
+            report.ok, report.broken_at, report.reason = False, breach[0], breach[1]
+        return report
+
+    report.entries = int(row.seq)
+    report.head = str(row.entry_hash)
+
+    if hash_payload(dict(row.payload)) != row.payload_hash:
+        report.ok = False
+        report.broken_at = int(row.seq)
+        report.reason = "the stored payload no longer hashes to its recorded payload hash"
+        return report
+
+    if link(str(row.prev_hash), str(row.payload_hash)) != row.entry_hash:
+        report.ok = False
+        report.broken_at = int(row.seq)
+        report.reason = "entry_hash is not the link of prev_hash and payload_hash"
+        return report
+
+    breach = _completeness_breach(conn, int(row.seq))
+    if breach is not None:
+        report.ok, report.broken_at, report.reason = False, breach[0], breach[1]
+
+    return report
+
+
 def verify(conn: Connection) -> VerificationReport:
     """Recompute the whole chain. Reports the first sequence number that does not check out.
 
@@ -217,40 +334,14 @@ def verify(conn: Connection) -> VerificationReport:
 
     report.head = expected_prev if rows else None
 
-    # Completeness. Everything above proves the entries present are internally consistent and correctly
-    # chained, which is not the same as proving none are missing.
-    #
-    # A deletion in the middle breaks the next entry's prev_hash, so it is already caught. A deletion at
-    # the tail is not: entries 1 to 3 of an original 1 to 4 form a shorter chain that verifies perfectly.
-    # That is the deletion someone would actually make, because the most recent predictions are the ones
-    # that have just been proved wrong.
-    #
-    # The sequence generator is the check. Postgres only advances it, so it remembers the highest sequence
-    # ever issued even after the row is gone. If it has issued more than the table holds, entries were
-    # removed from the end.
-    #
-    # This is evidence, not proof: someone with the right to run setval can rewind the counter, and
-    # someone who can do that can do anything. Detecting the deletion is what matters, and the external
-    # anchor in ``daily_root`` is what makes it undeniable.
-    issued = (
-        conn.execute(text("SELECT last_value, is_called FROM ledger_entry_seq_seq"))
-        .mappings()
-        .first()
-    )
-
-    if issued is not None and issued["is_called"]:
-        highest_issued = int(issued["last_value"])
-        highest_present = int(rows[-1].seq) if rows else 0
-        if highest_present < highest_issued:
-            report.ok = False
-            report.broken_at = highest_present + 1
-            missing = highest_issued - highest_present
-            report.reason = (
-                f"the ledger holds {report.entries} entries ending at sequence {highest_present}, but "
-                f"sequence {highest_issued} has been issued. {missing} entry or entries were deleted "
-                "from the end of the chain."
-            )
-            return report
+    # Completeness. See _completeness_breach for why the hash walk above is not sufficient on its own and
+    # why the sequence generator is the check. Shared with verify_head so the two cannot diverge.
+    breach = _completeness_breach(conn, int(rows[-1].seq) if rows else 0)
+    if breach is not None:
+        report.ok = False
+        report.broken_at = breach[0]
+        report.reason = breach[1]
+        return report
 
     return report
 

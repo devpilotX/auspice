@@ -129,7 +129,10 @@ class TestAReachableDatabaseWithAnUnreadableLedger:
         def explode(_conn: object) -> None:
             raise RuntimeError("the ledger table is unreadable")
 
-        monkeypatch.setattr(ledger, "verify", explode)
+        # verify_head, not verify. The handler uses the constant cost probe, because a full walk on an
+        # unauthenticated and rate limit exempt endpoint grows its own denial of service surface with the
+        # ledger. Patching the wrong one here would leave this test passing while asserting nothing.
+        monkeypatch.setattr(ledger, "verify_head", explode)
         body = client.get("/healthz").json()
 
         assert body["database"] is True, "the database answered, so it must not be reported as down"

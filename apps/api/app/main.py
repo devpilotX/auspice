@@ -192,7 +192,17 @@ def healthz(request: Request) -> HealthResponse:
             database = True
 
             try:
-                report = ledger.verify(conn)
+                # verify_head, not verify. The full walk reads every row and rehashes every payload, so its
+                # cost grows with the ledger, and this endpoint is unauthenticated and deliberately exempt
+                # from rate limiting. An O(entries) body here means the denial of service surface grows in
+                # exact proportion to the one metric the specification says must never stall: the more
+                # predictions published, the cheaper it becomes to hurt the service.
+                #
+                # The cheap probe catches a tail deletion and corruption of the most recent entry. It does
+                # not catch tampering in the middle of the chain, and the report says so through its scope
+                # field. The full walk still runs at startup through require_intact, before every publish,
+                # and behind the rate limiter on the accuracy page.
+                report = ledger.verify_head(conn)
                 chain_ok = report.ok
                 if not report.ok:
                     detail.append(f"ledger broken at sequence {report.broken_at}: {report.reason}")

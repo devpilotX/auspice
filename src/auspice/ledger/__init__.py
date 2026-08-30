@@ -18,6 +18,7 @@ from auspice.ledger.chain import (
     require_intact,
     unresolved_older_than,
     verify,
+    verify_head,
 )
 
 __all__ = [
@@ -36,4 +37,5 @@ __all__ = [
     "require_intact",
     "unresolved_older_than",
     "verify",
+    "verify_head",
 ]
