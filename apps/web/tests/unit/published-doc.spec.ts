@@ -139,3 +139,84 @@ test.describe("published document reader", () => {
     ]);
   });
 });
+
+
+test.describe("published document reader, constructs and refusals not previously covered", () => {
+  test("an asterisk bullet is a bullet", () => {
+    const blocks = parseDocument("# T\n\n* one\n* two\n");
+    const list = blocks[1];
+    expect(list?.kind).toBe("list");
+    if (list?.kind === "list") {
+      expect(list.ordered).toBe(false);
+      expect(list.items).toHaveLength(2);
+    }
+  });
+
+  test("an ordered list is ordered", () => {
+    const blocks = parseDocument("# T\n\n1. one\n2. two\n3. three\n");
+    const list = blocks[1];
+    expect(list?.kind).toBe("list");
+    if (list?.kind === "list") {
+      expect(list.ordered).toBe(true);
+      expect(list.items).toHaveLength(3);
+    }
+  });
+
+  test("a table separator carrying alignment colons is still a separator", () => {
+    // docs/ uses plain dashes today. A future document written with alignment would otherwise throw.
+    const blocks = parseDocument("# T\n\n| a | b |\n|:--|--:|\n| 1 | 2 |\n");
+    expect(blocks[1]?.kind).toBe("table");
+  });
+
+  test("an indented line under a bullet continues that item rather than starting a block", () => {
+    const blocks = parseDocument("# T\n\n- the item begins\n  and continues here\n");
+    const list = blocks[1];
+    expect(list?.kind).toBe("list");
+    if (list?.kind === "list") {
+      expect(list.items).toHaveLength(1);
+      expect(list.items[0]?.text.map((node) => node.value).join("")).toContain("continues here");
+    }
+  });
+
+  test("a heading deeper than three levels throws rather than rendering as a paragraph", () => {
+    // The reader supports three levels. A fourth would otherwise fall through to the paragraph branch and
+    // render the hashes as literal text, which looks like a typo rather than an unsupported construct.
+    expect(() => parseDocument("# T\n\n#### Four\n")).toThrow(UnreadableMarkdown);
+  });
+
+  test("the error names the line number and the offending content", () => {
+    // A build failure that does not say which line is a build failure someone bisects by hand.
+    try {
+      parseDocument("# T\n\n> not supported\n");
+      throw new Error("expected parseDocument to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(UnreadableMarkdown);
+      const unreadable = error as UnreadableMarkdown;
+      expect(unreadable.line).toBe(3);
+      expect(unreadable.content).toBe("> not supported");
+    }
+  });
+
+  test("a document with no h1 is refused rather than rendered untitled", () => {
+    expect(() => documentTitle(parseDocument("## only a subheading\n"))).toThrow(
+      /needs exactly one h1/,
+    );
+  });
+
+  test("the PUBLISHED list covers every document the site actually renders", () => {
+    // PUBLISHED above is hand written, so a page added to the site would not be covered by the tests in
+    // this file and nobody would notice. DOCUMENTS in published-page.tsx is the authority, and it is read
+    // as text rather than imported because importing it would pull React into a runner that has no DOM.
+    const source = readFileSync(
+      path.join(__dirname, "..", "..", "src", "components", "published-page.tsx"),
+      "utf8",
+    );
+    const rendered = [...source.matchAll(/file:\s*"([A-Z_]+\.md)"/g)].map((match) => match[1]);
+    expect(rendered.length).toBeGreaterThan(0);
+    const uncovered = rendered.filter((name) => name !== undefined && !PUBLISHED.includes(name));
+    expect(
+      uncovered,
+      `these documents are rendered by the site but not covered by PUBLISHED in this file: ${uncovered.join(", ")}`,
+    ).toHaveLength(0);
+  });
+});

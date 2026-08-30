@@ -152,6 +152,26 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
+      - name: Install Playwright browser
+        # Chromium only, and without system dependencies. The unit project below launches no browser, but
+        # Playwright resolves its browser registry at startup and a missing download is an error rather
+        # than a skip.
+        run: npx playwright install chromium
+        working-directory: apps/web
+
+      - name: Unit tests
+        # apps/web/tests/unit holds the parser tests: the pasted site list reader and the published
+        # document reader. They existed and never ran automatically, because this job never invoked
+        # playwright at all. A test that is not wired into CI is a test that stops being true.
+        #
+        # PLAYWRIGHT_BASE_URL is set so the webServer block in playwright.config.ts evaluates to
+        # undefined. These tests import two pure functions; starting a Next server to run them would add
+        # a minute and a class of failure that has nothing to do with what is under test.
+        run: npx playwright test --project=unit
+        working-directory: apps/web
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+
       - name: Build
         run: npm run build --workspace apps/web
         env:
@@ -162,6 +182,59 @@ jobs:
       - name: Performance budget
         # Measured gzipped. See the script for why the specification's 100 kB figure was amended.
         run: npm run budget --workspace apps/web
+
+  visual:
+    name: visual regression
+    # windows-latest, and this is a decision rather than a preference. Playwright suffixes a snapshot
+    # filename with the platform it was recorded on, and the committed baselines under
+    # tests/visual/design-system.spec.ts-snapshots/ are all -win32.png. On ubuntu Playwright would look for
+    # -linux.png, find nothing, and fail with a missing snapshot, which reads as a regression and is not
+    # one. Running where the baselines were made is the only way this gate means anything without
+    # regenerating six images on a platform nobody develops on.
+    #
+    # The alternative, committing a second set of Linux baselines, doubles the images to review on every
+    # deliberate design change. If the team moves to Linux development this job moves with it.
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install chromium
+        working-directory: apps/web
+
+      - name: Build
+        run: npm run build --workspace apps/web
+        env:
+          # The visual suite serves the production build. Without a base URL the pages render their
+          # unavailable state, which is a legitimate thing to have baselines for and is what the committed
+          # snapshots were taken against.
+          NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8000
+
+      - name: Visual regression
+        # playwright.config.ts starts `npm run start` itself when PLAYWRIGHT_BASE_URL is unset, so no
+        # server needs starting here. This is the suite that caught two content security policy bugs that
+        # lint, types and the build all passed, and until now it ran only when someone remembered to.
+        run: npx playwright test --project=light --project=dark
+        working-directory: apps/web
+
+      - name: Upload the report when it fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore
 
   writing:
     name: writing rules

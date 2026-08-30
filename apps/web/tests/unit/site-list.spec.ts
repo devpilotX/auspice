@@ -132,3 +132,53 @@ test.describe("pasted site list", () => {
     expect(problems[0]?.reason).toContain("not a usable acreage");
   });
 });
+
+
+test.describe("pasted site list, cases not previously covered", () => {
+  test("accepts CRLF, because a spreadsheet paste on Windows carries it", () => {
+    // The parser normalises CRLF. Without this test a regression there would strip nothing visible and
+    // instead leave a trailing carriage return inside the last cell of every row.
+    const { sites, problems } = parse(
+      "A,us-va-loudoun,data_center_hyperscale\r\nB,us-ia-linn,solar_utility\r\n",
+    );
+    expect(problems).toHaveLength(0);
+    expect(sites).toHaveLength(2);
+    expect(sites[1]?.useClass).toBe("solar_utility");
+  });
+
+  test("normalises a use class written with spaces or hyphens", () => {
+    const { sites, problems } = parse("A,us-va-loudoun,Data Center Hyperscale");
+    expect(problems).toHaveLength(0);
+    expect(sites[0]?.useClass).toBe("data_center_hyperscale");
+  });
+
+  test("a row with no county at all says so", () => {
+    // Distinct from an unrecognised county. The advice differs, so the message has to.
+    const { sites, problems } = parse("Site,Use class\nA,data_center_hyperscale");
+    expect(sites).toHaveLength(0);
+    expect(problems[0]?.reason).toContain("no county");
+  });
+
+  test("an unlabelled row is given a positional name rather than an empty one", () => {
+    const { sites } = parse("Site,County,Use class\n,us-va-loudoun,solar_utility");
+    expect(sites[0]?.label).toBe("Site 1");
+  });
+
+  test("a negative acreage is refused", () => {
+    const { problems } = parse("A,us-va-loudoun,data_center_hyperscale,-5");
+    expect(problems[0]?.reason).toContain("not a usable acreage");
+  });
+
+  test("five hundred rows are read without dropping any", () => {
+    // The portfolio endpoint accepts up to 500 sites per request, so 500 is the real upper bound this
+    // parser has to survive rather than an arbitrary large number.
+    const lines = Array.from(
+      { length: 500 },
+      (_value, index) => `Site ${index},us-va-loudoun,solar_utility`,
+    );
+    const { sites, problems } = parse(lines.join("\n"));
+    expect(problems).toHaveLength(0);
+    expect(sites).toHaveLength(500);
+    expect(sites[499]?.label).toBe("Site 499");
+  });
+});

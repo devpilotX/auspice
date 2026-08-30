@@ -80,13 +80,46 @@ Status values: OPEN, IN PROGRESS, CLOSED, PARKED, OPERATOR.
 | P1-2 | HIGH | Every route is `async def` while all database, polars, XGBoost and NumPyro work is synchronous, so blocking work runs on the event loop. Combined with the single worker requirement of the in process rate limiter, effective concurrency is about one. | all routers | OPEN | 2026-08-30 |
 | P1-3 | HIGH | `/healthz` is rate limit exempt and calls `ledger.verify()`, which is O(entries) and rehashes every payload. `/v1/public/accuracy` and `/v1/public/ledger` are unpaginated and uncached. The moat and the denial of service surface grow at the same rate. | `ratelimit.py`, `ledger/chain.py`, `routers/public.py` | OPEN | 2026-08-30 |
 | P1-4 | MEDIUM | Read scoring performs savepoint writes and the count per request is uncapped. A 500 site portfolio opens 500 savepoints in one transaction, 13 per site when alternatives are enabled. The design is correct and the consequence is undocumented. | `score/engine.py` | OPEN | 2026-08-30 |
-| P1-5 | HIGH | The Playwright visual suite is absent from CI, and the middleware comment records two CSP bugs that passed lint, types and build and were caught only by that suite. | `.github/workflows/ci.yml` | OPEN | 2026-08-30 |
-| P1-6 | HIGH | No JavaScript test framework exists. `site-list.ts` and `published-doc.ts` are the two most logic dense TypeScript files and have no direct coverage. `parseDocument` throws by design on unknown markdown, so adding a blockquote to a published document breaks the production build with no earlier warning. | `apps/web` | OPEN | 2026-08-30 |
+| P1-5 | HIGH | The Playwright suite is absent from CI entirely, so neither the unit tests nor the visual suite run automatically. The middleware comment records two CSP bugs that passed lint, types and build and were caught only by that suite. | `.github/workflows/ci.yml` | CLOSED 2026-08-30. Unit project wired into the web job; new `visual` job on windows-latest. | 2026-08-30 |
+| P1-6 | **WITHDRAWN** | Claimed "no JavaScript test framework exists" and "these two files have no direct coverage". **This was false.** `apps/web/tests/unit/published-doc.spec.ts` and `site-list.spec.ts` already existed, 242 lines, running in the `unit` project of `playwright.config.ts`, covering both files including the docs parse guard and the refusal to fuzzy match a county. | `apps/web/tests/unit/` | WITHDRAWN 2026-08-30. See [Corrections](#corrections). Superseded by P1-5. | 2026-08-30 |
+| P1-8 | MEDIUM | Visual baselines are recorded as `-win32.png` only. Playwright suffixes snapshot filenames with the platform, so the suite cannot pass on a Linux runner: it looks for `-linux.png`, finds nothing, and reports a missing snapshot, which reads as a regression and is not one. | `apps/web/tests/visual/design-system.spec.ts-snapshots/` | MITIGATED 2026-08-30 by running the visual job on windows-latest, where the baselines were made. Not fixed: the suite is still single platform. | 2026-08-30 |
 | P1-7 | LOW | `slowapi` is declared in the `api` extra and in the mypy overrides while `ratelimit.py` implements its own token bucket. | `pyproject.toml` | OPEN | 2026-08-30 |
 | P2-1 | MEDIUM | Models are fitted at startup inside `lifespan`, including MCMC. The artefact loading seam is named in a docstring and not implemented. | `apps/api/app/deps.py` | OPEN | 2026-08-30 |
 | P2-2 | MEDIUM | `monitor/watcher.py` writes rows to an `alert` table and nothing delivers them, so the monitoring line the specification calls the reason revenue recurs has no channel. | `monitor/watcher.py` | OPEN | 2026-08-30 |
 | P2-3 | MEDIUM | No error tracking, no uptime metrics, no automated or tested backups. All three are specified and none exists. | absent | OPEN | 2026-08-30 |
 | P2-4 | MEDIUM | Portfolio screening is a synchronous POST of up to 500 sites behind a 0.5 per second limit, with no progress and no partial results. | `routers/score.py` | OPEN | 2026-08-30 |
+
+---
+
+## Corrections
+
+Findings that turned out to be wrong. Kept rather than deleted, because an audit that quietly removes its
+mistakes cannot be checked.
+
+### 2026-08-30: P1-6 was false
+
+**Claimed:** apps/web has no JavaScript test framework and no unit coverage of `site-list.ts` or
+`published-doc.ts`.
+
+**Actually:** `apps/web/tests/unit/` already held `published-doc.spec.ts` and `site-list.spec.ts`, 242
+lines between them, running in the `unit` project declared in `playwright.config.ts`. They covered both
+files, including the refusal to fuzzy match a county name and a guard that every published document
+parses. One of their assertions is stronger than anything in the replacement that was briefly written:
+`no sentence is dropped` harvests every word from all five documents and asserts the parser kept them all.
+
+**How the error happened:** the claim was asserted from a grep for `vitest` and `jest` across the
+repository plus a read of the CI workflow. `apps/web/tests` appeared in an early directory listing and
+was never opened. A negative claim about test coverage requires a directory listing, not a dependency
+grep. The lesson is general: absence of a tool is not absence of the thing the tool provides.
+
+**What it cost:** one commit, `e39f8cf`, added Vitest and 60 duplicate tests, overruling an explicit
+decision recorded in `playwright.config.ts`: "Kept in this runner rather than a second test framework,
+because the code under test is TypeScript the web app imports and one runner is enough." Reverted in
+`e5b0559`. The 14 cases that were genuinely new were ported into the existing specs instead, taking the
+unit project from 21 tests to 35.
+
+**What survived:** the real defect was narrower than claimed and is now closed. The tests existed and
+never ran, because CI never invoked Playwright. That was P1-5.
 
 ---
 
