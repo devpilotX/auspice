@@ -109,3 +109,28 @@ Two tooling notes that cost time and are recorded so they are not rediscovered:
         checkpoint/004-ci-harness. Cumulative against baseline: 16 files, 2210 insertions,
         0 deletions. main still at 2d8efdf.
         PHASE A COMPLETE. Next: Phase B ship blockers, Task 5.
+
+[20:16] Task 6. memo extra added, uv.lock regenerated because CI runs UV_FROZEN=1.
+        playwright 1.62.0 and pyee 13.0.1 checked against advisories, both clean.
+        Verified to_pdf still raises StageUnavailableError naming both commands.
+[20:20] Task 5. infra/Dockerfile.api written. Keeps the source tree because config.py
+        REPO_ROOT is parents[2] and would resolve into site-packages otherwise, breaking
+        every default path and .env discovery. One worker, stated as a constraint.
+        Every COPY source verified to exist.
+[20:22] FOUND: no .dockerignore. Build context measured at about 4000 MB, mostly .tools
+        1.58 GB and .venv 1.54 GB. Added one; context now 7.8 MB, verified by simulating
+        the patterns against the tree and confirming nothing the Dockerfile copies is
+        blocked. Not in the plan, required for the Dockerfile to be usable.
+[20:24] P0-3 CORS. Compose set AUSPICE_ENV production and never set the origins, so it
+        inherited the localhost development default and refused every deployed origin.
+        Now fails fast on unset. AUSPICE_PUBLIC_HOST documented in .env.example.
+[20:26] Caddy TLS proxy added. Both other services bind to loopback so nothing was
+        reachable. NOT VERIFIED, docker absent, stated in the file itself.
+[20:34] Task 7, P0-2. Route handler holds the key server side. Guards: byte cap on
+        content-length, 500 site cap, token bucket per address. 401/403 upstream becomes
+        503 rather than passing through, because a passed through 401 reads as the
+        visitor's fault and is not. 8 guard tests added, unit project 35 -> 43.
+[20:36] SECURITY VERIFIED: sentinel value in AUSPICE_API_KEY during a production build
+        appears nowhere in .next/static and nowhere in prerendered HTML or JSON.
+        No NEXT_PUBLIC_ variable carrying a key, secret or token exists in source.
+        PHASE B COMPLETE. All four P0 blockers closed. Next: Phase C correctness.

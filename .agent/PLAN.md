@@ -20,9 +20,9 @@ this file against reality before continuing, and resume at the first TODO.
 
 | # | Task | Status | Evidence |
 |---|---|---|---|
-| 5 | `infra/Dockerfile.api`, production CORS, TLS proxy | TODO | execution verification parked as D-001 |
-| 6 | Define the `memo` extra | TODO | |
-| 7 | Route handler so `/portfolio` works without a client side key | TODO | |
+| 5 | `infra/Dockerfile.api`, production CORS, TLS proxy | DONE | Dockerfile, .dockerignore, Caddyfile, compose CORS. Build parked as D-001 |
+| 6 | Define the `memo` extra | DONE | extra plus lock; StageUnavailableError path verified |
+| 7 | Route handler so `/portfolio` works without a client side key | DONE | 8 guard tests; sentinel key absent from client output |
 
 ## Phase C, correctness
 
