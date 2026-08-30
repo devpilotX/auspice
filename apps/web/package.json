@@ -8,8 +8,6 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
     "test:visual": "playwright test",
     "budget": "node scripts/check-budget.mjs",
     "check:tokens": "node scripts/check-tokens.mjs",
@@ -45,7 +43,6 @@
     "eslint": "9.36.0",
     "tailwindcss": "4.1.13",
     "typescript": "5.9.2",
-    "typescript-eslint": "8.44.1",
-    "vitest": "4.1.0"
+    "typescript-eslint": "8.44.1"
   }
 }
