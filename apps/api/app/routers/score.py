@@ -37,7 +37,7 @@ def _to_site_request(body: ScoreRequest) -> SiteRequest:
     summary="Score one site",
     response_description="The full score object, or an abstention.",
 )
-async def score_one(
+def score_one(
     body: ScoreRequest,
     principal: CurrentPrincipal,
     conn: Db,
@@ -63,7 +63,7 @@ async def score_one(
     response_model=PortfolioResponse,
     summary="Screen a portfolio",
 )
-async def score_portfolio(
+def score_portfolio(
     body: PortfolioRequest,
     principal: CurrentPrincipal,
     conn: Db,
@@ -131,7 +131,7 @@ async def score_portfolio(
 
 
 @router.get("/score/as-of", summary="The date the served data is current to")
-async def data_as_of(principal: CurrentPrincipal, models: Models) -> dict[str, object]:
+def data_as_of(principal: CurrentPrincipal, models: Models) -> dict[str, object]:
     """Every score carries ``data_as_of``. This exposes it without running a score."""
     del principal
     return {
@@ -149,7 +149,7 @@ async def data_as_of(principal: CurrentPrincipal, models: Models) -> dict[str, o
     response_model=Score,
     summary="Retrieve a score that was already produced",
 )
-async def get_score(public_id: str, principal: CurrentPrincipal, conn: Db) -> Score:
+def get_score(public_id: str, principal: CurrentPrincipal, conn: Db) -> Score:
     """Read back a stored prediction by its public identifier.
 
     Retrieval rather than recomputation, deliberately. A score is a dated statement about what was known on a

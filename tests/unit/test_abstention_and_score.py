@@ -322,12 +322,13 @@ class TestPublishedMethodologyMatchesTheCode:
     """
 
     def test_every_abstention_reason_is_published(self) -> None:
-        import asyncio
         import json
 
         from app.routers.public import methodology
 
-        published = asyncio.run(methodology())
+        # Called directly rather than through asyncio.run. The handler is a plain def now: everything
+        # it touches is synchronous, and async def put that work on the event loop.
+        published = methodology()
         text = json.dumps(published["abstention_rule"])
 
         # Each enum member has to be discoverable in the published rule, by the quantity that triggers it.
@@ -347,12 +348,10 @@ class TestPublishedMethodologyMatchesTheCode:
             assert key in text, f"{reason.value} is enforced but not published"
 
     def test_the_published_thresholds_are_the_enforced_thresholds(self) -> None:
-        import asyncio
-
         from app.routers.public import methodology
         from auspice.models.eval import thresholds
 
-        published = asyncio.run(methodology())
+        published = methodology()
         conditions = published["abstention_rule"]["abstain_when_all_hold"]
         assert conditions["comparable_decisions_below"] == thresholds.ABSTAIN_MAX_COMPARABLES
         assert conditions["pooling_weight_above"] == thresholds.ABSTAIN_MAX_POOLING_WEIGHT

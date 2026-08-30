@@ -46,7 +46,7 @@ def _freshness(conn: Connection, slug: str | None = None) -> list[dict[str, Any]
 
 
 @router.get("/accuracy", response_model=AccuracyResponse, summary="The published accuracy record")
-async def accuracy(conn: Db) -> AccuracyResponse:
+def accuracy(conn: Db) -> AccuracyResponse:
     from auspice import ledger
 
     record = ledger.public_record(conn)
@@ -92,7 +92,7 @@ async def accuracy(conn: Db) -> AccuracyResponse:
 
 
 @router.get("/ledger", summary="The full prediction ledger, newline delimited JSON")
-async def ledger_export(conn: Db) -> Any:
+def ledger_export(conn: Db) -> Any:
     """The whole ledger, so anyone can verify it without using our interface.
 
     A record that can only be checked through the publisher's own tooling is not a public record.
@@ -109,7 +109,7 @@ async def ledger_export(conn: Db) -> Any:
 
 
 @router.get("/jurisdictions", response_model=list[JurisdictionSummary], summary="Coverage")
-async def jurisdictions(conn: Db) -> list[JurisdictionSummary]:
+def jurisdictions(conn: Db) -> list[JurisdictionSummary]:
     from auspice.pipeline.registry.loader import registry_summary
 
     freshness_by_slug = {row["slug"]: row for row in _freshness(conn)}
@@ -148,8 +148,8 @@ async def jurisdictions(conn: Db) -> list[JurisdictionSummary]:
     response_model=JurisdictionProfile,
     summary="A jurisdiction profile",
 )
-async def jurisdiction_profile(slug: str, conn: Db) -> JurisdictionProfile:
-    summaries = await jurisdictions(conn)
+def jurisdiction_profile(slug: str, conn: Db) -> JurisdictionProfile:
+    summaries = jurisdictions(conn)
     summary = next((s for s in summaries if s.slug == slug), None)
     if summary is None:
         raise HTTPException(
@@ -247,7 +247,7 @@ async def jurisdiction_profile(slug: str, conn: Db) -> JurisdictionProfile:
 
 
 @router.get("/locate", response_model=LocateResponse, summary="Who decides for this coordinate")
-async def locate(
+def locate(
     conn: Db,
     longitude: Annotated[float, Query(ge=-180, le=180)],
     latitude: Annotated[float, Query(ge=-90, le=90)],
@@ -296,7 +296,7 @@ async def locate(
 
 
 @router.get("/freshness", response_model=list[FreshnessRow], summary="How stale our data is")
-async def freshness(conn: Db) -> list[FreshnessRow]:
+def freshness(conn: Db) -> list[FreshnessRow]:
     return [
         FreshnessRow(
             jurisdiction=row["slug"],
@@ -316,7 +316,7 @@ async def freshness(conn: Db) -> list[FreshnessRow]:
 
 
 @router.get("/methodology", summary="The published method")
-async def methodology() -> dict[str, Any]:
+def methodology() -> dict[str, Any]:
     """The thresholds and rules the product commits to, served as data.
 
     Published from the same constants the code enforces rather than transcribed into prose, so the

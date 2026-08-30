@@ -161,22 +161,22 @@ app.include_router(public.router)
 app.include_router(tiles.router)
 
 
+# Two things about the shape of this handler, both of them repairs, and both kept out of the docstring
+# because FastAPI publishes a docstring as the endpoint description in /docs. A partner engineer reading
+# this service by hand does not need three paragraphs about our own bugs.
+#
+# The connection is acquired inside the handler rather than through the `Db` dependency. A dependency that
+# cannot connect raises before the handler body runs, so the one endpoint written to describe a degraded
+# database answered 500 instead. A health check that cannot report the condition it exists to report is
+# worse than no health check: a monitor reads 500 as "the service is broken" rather than "the database is
+# down", and those call for different people to be woken up.
+#
+# Not `async def`. Everything below is synchronous, a database round trip and a full ledger verification.
+# On the event loop that blocks every other request in the process. FastAPI runs a plain `def` in its
+# threadpool. See the note in app/deps.py.
 @app.get("/healthz", response_model=HealthResponse, tags=["operations"])
 def healthz(request: Request) -> HealthResponse:
-    """Liveness plus the two things that actually matter: is the ledger intact, and can we score.
-
-    Two things about the shape of this handler, both of them repairs.
-
-    **The connection is acquired here rather than through the ``Db`` dependency.** A dependency that
-    cannot connect raises before the handler body runs, so the one endpoint written to describe a
-    degraded database answered 500 instead. A health check that cannot report the condition it exists to
-    report is worse than no health check, because a monitor reads 500 as "the service is broken" rather
-    than as "the database is down", and those call for different people to be woken up.
-
-    **Not ``async def``.** Everything below is synchronous: a database round trip and a full ledger
-    verification. On the event loop that blocks every other request in the process, including this one
-    when something else is already blocking it. FastAPI runs a plain ``def`` in its threadpool.
-    """
+    """Liveness plus the two things that actually matter: is the ledger intact, and can we score."""
     from auspice import ledger
 
     detail: list[str] = []
