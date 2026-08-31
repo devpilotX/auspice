@@ -12,6 +12,7 @@ from auspice.cli import (
     labels_cmd,
     ledger_cmd,
     model_cmd,
+    ops_cmd,
     pipeline_cmd,
     registry_cmd,
     score_cmd,
@@ -41,6 +42,7 @@ app.add_typer(score_cmd.score_app, name="score")
 app.add_typer(score_cmd.memo_app, name="memo")
 app.add_typer(pipeline_cmd.monitor_app, name="monitor")
 app.add_typer(ledger_cmd.app, name="ledger")
+app.add_typer(ops_cmd.app, name="ops")
 
 
 @app.command("version")

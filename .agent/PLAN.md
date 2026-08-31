@@ -56,7 +56,7 @@ this file against reality before continuing, and resume at the first TODO.
 |---|---|---|---|
 | 19 | Rule change watch as a surface | TODO | |
 | 20 | Alert delivery | DONE | 3 channels, migration 0004, 4 CLI commands, 32 tests, checkpoint/023 |
-| 21 | Error tracking, metrics, backups | TODO | |
+| 21 | Error tracking, metrics, backups | DONE | request ids and an outermost handler, gated Prometheus metrics, tested backups. 60 tests, checkpoints 024 and 025 |
 | 22 | Portfolio as an async job | TODO | |
 | 23 | Artefact serving seam, trust instrumentation | TODO | |
 | 24 | Time to decision, remaining feature gaps | TODO | |

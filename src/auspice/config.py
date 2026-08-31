@@ -153,9 +153,34 @@ class Settings(BaseSettings):
     registry_path: Path = Path("data/registry")
     labels_path: Path = Path("data/labels")
     artifacts_path: Path = Path("artifacts")
+    backup_path: Path = Path("var/backups")
+    """Where `auspice ops backup` writes dumps and manifests.
+
+    Under `var/` because that directory is already ignored and holds the local database cluster, so a
+    dump cannot be committed by accident. In a real deployment this points at a mount that is not the
+    same disk as the database, and `docs/OPERATIONS.md` says so.
+    """
+
+    backup_admin_url: PostgresDsn | None = None
+    """A connection used only to create, restore into and drop the scratch database during
+    `auspice ops verify`. Falls back to `database_url` when unset.
+
+    This exists because restoring is an administrative operation and the application role is not an
+    administrator. Measured on the local cluster: the `auspice` role cannot run
+    `CREATE EXTENSION postgis`, which every dump of this schema contains, so a restore attempted with
+    the application's own credentials fails with a permission error. That is a real finding rather than
+    a local quirk: a backup that the credentials on hand cannot restore is a file, not a backup.
+
+    Nothing else in the system uses this. The serving process and the pipeline never see it.
+    """
 
     @field_validator(
-        "raw_local_root", "ledger_path", "registry_path", "labels_path", "artifacts_path"
+        "raw_local_root",
+        "ledger_path",
+        "registry_path",
+        "labels_path",
+        "artifacts_path",
+        "backup_path",
     )
     @classmethod
     def _absolutise(cls, value: Path) -> Path:
