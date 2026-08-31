@@ -46,8 +46,21 @@ mlruns/
 /data/raw/
 /data/derived/
 
-# Generated API client types are built in CI from the OpenAPI document.
-/packages/shared-types/src/generated/
+# packages/shared-types/src/generated/ is deliberately NOT ignored, and that is a correction rather than
+# an oversight. It was ignored, with the comment "built in CI from the OpenAPI document", and two things
+# followed that nobody had checked.
+#
+# `npm run types:check` compares the committed generated types against a fresh generation, so that a route
+# cannot change its response shape while the web application keeps compiling against the old one. With the
+# file untracked there is nothing to compare, and the script exits 1 saying the file does not exist. The
+# CI web job runs that check on a fresh checkout with no generation step before it, so that job could not
+# have been passing.
+#
+# `tsc` cannot compile a fresh clone either: packages/shared-types/src/index.ts imports ./generated/api.js
+# and apps/web compiles against it. Found by the Gate 6 fresh clone run.
+#
+# openapi.json is tracked, so the type file derived from it is tracked too. Generated code that other code
+# compiles against belongs in the repository; generated code nothing depends on does not.
 
 # ---------------------------------------------------------------------------
 # OS
