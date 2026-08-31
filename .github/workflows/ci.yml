@@ -28,6 +28,8 @@ jobs:
 
     env:
       AUSPICE_ENV: test
+      # Test mode must not run with an open key ring. This local placeholder is not a deployed credential.
+      AUSPICE_API_KEYS: "ci-placeholder-key:ci:enterprise"
       AUSPICE_DATABASE_URL: postgresql+psycopg://auspice:auspice@127.0.0.1:55432/auspice_test
       AUSPICE_TEST_DATABASE_URL: postgresql+psycopg://auspice:auspice@127.0.0.1:55432/auspice_test
       AUSPICE_CRAWLER_CONTACT: ci@auspice.example
@@ -297,22 +299,33 @@ jobs:
       - name: Wait for API
         shell: pwsh
         run: |
-          $ready = $false
-          $lastError = 'no response received'
-          for ($attempt = 1; $attempt -le 60; $attempt++) {
-            try {
-              $response = Invoke-WebRequest -Uri 'http://127.0.0.1:8000/healthz' -UseBasicParsing -NoProxy -TimeoutSec 2
-              if ($response.StatusCode -eq 200) {
-                $ready = $true
-                break
-              }
-            } catch {
-              $lastError = $_.Exception.Message
-            }
-            Start-Sleep -Seconds 2
-          }
-          if (-not $ready) {
-            Write-Host "Last health probe error: $lastError"
+          $probe = @'
+          import http.client
+          import sys
+          import time
+
+          deadline = time.monotonic() + 120
+          last_error = "no response received"
+          while time.monotonic() < deadline:
+              connection = http.client.HTTPConnection("127.0.0.1", 8000, timeout=2)
+              try:
+                  connection.request("GET", "/healthz")
+                  response = connection.getresponse()
+                  response.read()
+                  if response.status == 200:
+                      raise SystemExit(0)
+                  last_error = f"HTTP {response.status} {response.reason}"
+              except Exception as error:
+                  last_error = f"{type(error).__name__}: {error}"
+              finally:
+                  connection.close()
+              time.sleep(2)
+
+          print(f"Last health probe error: {last_error}", file=sys.stderr)
+          raise SystemExit(1)
+          '@
+          $probe | python -
+          if ($LASTEXITCODE -ne 0) {
             Get-Content (Join-Path $env:RUNNER_TEMP 'auspice-api.stdout.log') -Tail 200 -ErrorAction SilentlyContinue
             Get-Content (Join-Path $env:RUNNER_TEMP 'auspice-api.stderr.log') -Tail 200 -ErrorAction SilentlyContinue
             throw 'API did not become healthy within 120 seconds'
