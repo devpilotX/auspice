@@ -242,6 +242,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history, because check_line_endings.py reads stored blobs at HEAD and a shallow
+          # checkout that omitted them would pass by having nothing to look at.
+          fetch-depth: 1
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -249,3 +253,10 @@ jobs:
       - name: No em dashes, no banned vocabulary, no emoji
         # The mechanical part of the writing rules is testable, so it is tested rather than remembered.
         run: uv run --no-project python tools/check_writing.py
+
+      - name: Line endings match the declared policy
+        # .gitattributes declares `* text=auto eol=lf`, and declaring it is not the same as it holding:
+        # git will not convert a blob already stored as CRLF. Two files survived the repository wide
+        # renormalisation for that reason and were found by the fresh clone gate rather than by review,
+        # because the symptom is a diff that rewrites a whole file rather than an error.
+        run: uv run --no-project python tools/check_line_endings.py
