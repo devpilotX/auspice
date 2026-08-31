@@ -3,6 +3,60 @@
 Parked, not forgotten. Every CRITICAL and HIGH item gets exactly one more attempt by a different route
 before the run is allowed to finish. Nothing here was silently dropped.
 
+## Plan tasks not reached in this run
+
+Recorded here rather than left as TODO in the plan, so the scope that was not delivered is stated with an
+impact rating rather than implied by a status column.
+
+```
+D-005 | Target: Task 16, corpus backfill across the twelve counties
+      | Not blocked. Not done because it is hours of polite crawling followed by hand verification of
+      |   every row, and a row entered without a verbatim quote from a real fetched source is forbidden
+      |   by the run's constraints and would be worse than no row.
+      | What exists to do it with: `auspice labels add` and `auspice labels quote`, both built in this
+      |   run and both exercised against live county sources. The console is what makes the rate in
+      |   data/labels/README.md, 30 to 60 rows a day, achievable rather than aspirational.
+      | Impact: CRITICAL, and it is the binding constraint on the business rather than on the software.
+      |   The kill test needs 400 terminal decisions and the corpus holds 1. Nothing else in the plan
+      |   changes that number.
+```
+
+```
+D-006 | Target: Task 22, portfolio screening as an asynchronous job
+      | Not done because it spans a schema change, two endpoints, a worker, and the web client's polling
+      |   and progress states. Started and deliberately not half-finished: an async path that exists in
+      |   the API and not in the interface is a feature the product cannot use, and would have been
+      |   worse than the current synchronous path, which works.
+      | Impact: MEDIUM. A 500 site screen is one synchronous request behind a 0.5 per second limit, with
+      |   no progress and no partial results, and it holds one database snapshot for its whole duration,
+      |   which prevents autovacuum from reclaiming anywhere in the cluster while it runs. ADR-002
+      |   removed the writes from that path, so the remaining cost is the held snapshot and the absent
+      |   progress rather than graph damage.
+      | Route: create a job row always, process inline below a configurable site count and return the
+      |   same response shape so the existing client keeps working, return 202 with a job reference above
+      |   it, and add polling to apps/web. One site per transaction in the worker.
+```
+
+```
+D-007 | Target: Task 19, rule change watch as a product surface
+      | Not done. The mechanism exists and is tested: monitor/watcher.py detects rule changes and scores
+      |   them for materiality, and this run added the delivery that sends them. What is missing is the
+      |   customer facing surface, an endpoint and a page showing what changed where and what is next.
+      | Impact: MEDIUM. The audit called this the strongest new product finding, and it is a surface on
+      |   top of working machinery rather than new machinery. It sells nothing until the corpus exists,
+      |   because a rule change watch over twelve counties with one labelled decision has little to say.
+```
+
+```
+D-008 | Target: Task 23, artefact serving seam and evidence drawer analytics
+      | The serving seam half is closed rather than deferred: see P2-1 in AUDIT_REPORT.md, assessed with
+      |   a measurement and deliberately not built, with a revisit trigger of 40 training rows.
+      | The analytics half is not done. Instrumenting which evidence a customer opens is a product
+      |   learning tool, and it collects behavioural data, which needs a decision about what is retained
+      |   and for how long before any of it is written.
+      | Impact: LOW. Nothing depends on it and it has a privacy dimension that belongs to the operator.
+```
+
 ## Sweep, 2026-08-31
 
 D-001 and D-002 were both swept by their third alternative route, and D-001's sweep found a real defect.
