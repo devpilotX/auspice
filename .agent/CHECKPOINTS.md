@@ -6,7 +6,12 @@ Restore points, in order. Rewind with `git reset --hard <tag>`. See `.agent/REST
 |---|---|---|
 | `checkpoint/000-baseline` | `2d8efdf` | The operator's `main`, untouched. Pre agent state. Nothing was committed here. |
 | `checkpoint/001-ignore-kiro-settings` | `149612c` | `.kiro/settings/` added to `.gitignore` so the MCP bearer token cannot reach a commit. Skill definitions tracked. Amended once to fix a CRLF rewrite of the whole file. |
-| `checkpoint/002-agent-artifacts` | pending | The `.agent/` scaffold and `AUDIT_REPORT.md`. |
+| `checkpoint/002-agent-artifacts` | `9f49370` | The `.agent/` scaffold and `AUDIT_REPORT.md`. |
+| `checkpoint/003` to `005` | | Vitest attempt, its revert, CI harness, Phase A close. |
+| `checkpoint/006` to `010` | | Phase B: memo extra, Dockerfile and CORS, TLS proxy, portfolio proxy route. |
+| `checkpoint/011` to `015` | | Phase C: healthz, event loop, verify_head, verification cache, public endpoints. |
+| `checkpoint/016-test-isolation` | `f3885ae` | NEW-01. Endpoint tests no longer read the developer's database. |
+| `checkpoint/017-resume-state` | | This snapshot, written so a session restart loses nothing. |
 
 ## Off repository backups, never delete
 

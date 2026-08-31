@@ -28,10 +28,10 @@ this file against reality before continuing, and resume at the first TODO.
 
 | # | Task | Status | Evidence |
 |---|---|---|---|
-| 8 | `healthz` reports a degraded database | TODO | |
-| 9 | Move blocking work off the event loop | TODO | |
-| 10 | Bound the cost of unauthenticated endpoints | TODO | |
-| 11 | Cap scoring savepoints, drop unused `slowapi` | TODO | |
+| 8 | `healthz` reports a degraded database | DONE | three defects; proved tests fail against the original |
+| 9 | Move blocking work off the event loop | DONE | 12 handlers, route table guard, proved by reverting one |
+| 10 | Bound the cost of unauthenticated endpoints | DONE | three parts: verify_head, digest keyed cache, streamed export |
+| 11 | Cap scoring savepoints, drop unused `slowapi` | TODO | next, closes Phase C |
 
 ## Phase D, rename
 

@@ -12,19 +12,19 @@ OPERATOR means the agent cannot execute it under the constraints of this run and
 | 2 | Strict mypy clean | `uv run python -m mypy` | BASELINE PASS |
 | 3 | Python tests green | `uv run python -m pytest -q` | BASELINE PASS, 309 passed |
 | 4 | No migration drift | `alembic check` plus `test_no_pending_migration` | BASELINE PASS |
-| 5 | Corpus valid | `auspice registry validate && auspice labels validate` | PENDING |
+| 5 | Corpus valid | `auspice registry validate && auspice labels validate` | PASS, registry and labels validate |
 | 6 | Web static checks | `eslint`, `tsc --noEmit`, `check-tokens` | PASS after ENV-01 fix |
 | 7 | Web builds within budget | `next build && check-budget` | BASELINE PASS |
-| 8 | JS unit tests green | `npm run test --workspace apps/web` | PENDING, framework absent |
+| 8 | JS unit tests green | `npm run test --workspace apps/web` | PASS, 43 in the Playwright unit project, now wired into CI |
 | 9 | Visual suite green | `npm run test:visual --workspace apps/web` | OPERATOR, needs a server |
 | 10 | OpenAPI to TS contract current | `check-types-current` | BASELINE PASS |
 | 11 | Writing rules pass | `check_writing.py` | BASELINE PASS, 158 files |
 | 12 | Container stack starts, API answers | `docker compose up` then `/healthz` | OPERATOR, docker absent |
 | 13 | Memo renders a PDF | `auspice memo render` in the container | OPERATOR, docker absent |
 | 14 | Portfolio works from a browser, no key client side | Playwright plus bundle grep | PARTIAL, grep runnable, browser is OPERATOR |
-| 15 | Health check reports degraded when DB is down | unit test with unreachable DB | PENDING |
-| 16 | Health check not blocked by a slow score | concurrency test | PENDING |
-| 17 | Ledger verification incremental, still catches tail deletion | unit tests on clean, tampered, truncated chains | PENDING |
+| 15 | Health check reports degraded when DB is down | unit test with unreachable DB | PASS, and proved to fail against the original handler |
+| 16 | Health check not blocked by a slow score | concurrency test | PASS, asserted by walking the route table |
+| 17 | Ledger verification incremental, still catches tail deletion | unit tests on clean, tampered, truncated chains | PASS, 49 ledger tests including the naive key collision |
 | 18 | Public brand reads Permission Bureau | grep for user visible old name plus visual suite | PENDING |
 | 19 | Fresh clone reproducibility | IRONCLAD Gate 6 from a temp clone | PENDING |
 | 20 | `AUDIT_REPORT.md` traces every finding to a status | manual read | PENDING |

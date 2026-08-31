@@ -76,13 +76,14 @@ Status values: OPEN, IN PROGRESS, CLOSED, PARKED, OPERATOR.
 | P0-2 | CRITICAL | The portfolio page sends no API key and there is no server side proxy route, so the wedge feature returns 401 outside development. | `apps/web/src/lib/api.ts:385,469`; `src/app/portfolio/page.tsx` | CLOSED 2026-08-30. Route handler at `src/app/api/portfolio/route.ts` holds the key server side. Sentinel key verified absent from all client output. | 2026-08-30 |
 | P0-3 | HIGH | Production compose sets `AUSPICE_ENV: production` without `AUSPICE_API_CORS_ORIGINS`, so CORS defaults to localhost and a deployed web origin is refused. | `infra/docker-compose.yml`, `config.py` | CLOSED 2026-08-30. Compose now fails fast on unset `AUSPICE_API_CORS_ORIGINS` instead of inheriting the localhost default. | 2026-08-30 |
 | P0-4 | HIGH | `memo/generator.py` instructs `uv sync --extra memo` and no `memo` extra exists, so the priced PDF deliverable cannot be produced. | `memo/generator.py:141`, `pyproject.toml` | CLOSED 2026-08-30. `memo` extra defined, `uv.lock` regenerated, degradation path verified to still raise StageUnavailableError. | 2026-08-30 |
-| P1-1 | HIGH | `healthz` initialises `database = True` and never sets it false, so a database outage cannot be reported as degraded. The `Db` dependency also acquires the connection before the handler runs, so a hard outage surfaces as a 500 rather than the degraded body. | `apps/api/app/main.py` | OPEN | 2026-08-30 |
-| P1-2 | HIGH | Every route is `async def` while all database, polars, XGBoost and NumPyro work is synchronous, so blocking work runs on the event loop. Combined with the single worker requirement of the in process rate limiter, effective concurrency is about one. | all routers | OPEN | 2026-08-30 |
-| P1-3 | HIGH | `/healthz` is rate limit exempt and calls `ledger.verify()`, which is O(entries) and rehashes every payload. `/v1/public/accuracy` and `/v1/public/ledger` are unpaginated and uncached. The moat and the denial of service surface grow at the same rate. | `ratelimit.py`, `ledger/chain.py`, `routers/public.py` | OPEN | 2026-08-30 |
+| P1-1 | HIGH | `healthz` initialises `database = True` and never sets it false, so a database outage cannot be reported as degraded. The `Db` dependency also acquires the connection before the handler runs, so a hard outage surfaces as a 500 rather than the degraded body. | `apps/api/app/main.py` | CLOSED 2026-08-31. Three defects, one of them introduced by fixing another and caught by the test. Tests proved to fail against the original handler. | 2026-08-31 |
+| P1-2 | HIGH | Every route is `async def` while all database, polars, XGBoost and NumPyro work is synchronous, so blocking work runs on the event loop. Combined with the single worker requirement of the in process rate limiter, effective concurrency is about one. | all routers | CLOSED 2026-08-31. Twelve handlers converted, one await removed. Route table guard, proved by reverting a handler. | 2026-08-31 |
+| P1-3 | HIGH | `/healthz` is rate limit exempt and calls `ledger.verify()`, which is O(entries) and rehashes every payload. `/v1/public/accuracy` and `/v1/public/ledger` are unpaginated and uncached. The moat and the denial of service surface grow at the same rate. | `ratelimit.py`, `ledger/chain.py`, `routers/public.py` | CLOSED 2026-08-31 in three parts: constant cost verify_head for healthz, digest keyed verification cache for the accuracy page, streamed export with ETags. | 2026-08-31 |
 | P1-4 | MEDIUM | Read scoring performs savepoint writes and the count per request is uncapped. A 500 site portfolio opens 500 savepoints in one transaction, 13 per site when alternatives are enabled. The design is correct and the consequence is undocumented. | `score/engine.py` | OPEN | 2026-08-30 |
 | P1-5 | HIGH | The Playwright suite is absent from CI entirely, so neither the unit tests nor the visual suite run automatically. The middleware comment records two CSP bugs that passed lint, types and build and were caught only by that suite. | `.github/workflows/ci.yml` | CLOSED 2026-08-30. Unit project wired into the web job; new `visual` job on windows-latest. | 2026-08-30 |
 | P1-6 | **WITHDRAWN** | Claimed "no JavaScript test framework exists" and "these two files have no direct coverage". **This was false.** `apps/web/tests/unit/published-doc.spec.ts` and `site-list.spec.ts` already existed, 242 lines, running in the `unit` project of `playwright.config.ts`, covering both files including the docs parse guard and the refusal to fuzzy match a county. | `apps/web/tests/unit/` | WITHDRAWN 2026-08-30. See [Corrections](#corrections). Superseded by P1-5. | 2026-08-30 |
 | P1-8 | MEDIUM | Visual baselines are recorded as `-win32.png` only. Playwright suffixes snapshot filenames with the platform, so the suite cannot pass on a Linux runner: it looks for `-linux.png`, finds nothing, and reports a missing snapshot, which reads as a regression and is not one. | `apps/web/tests/visual/design-system.spec.ts-snapshots/` | MITIGATED 2026-08-30 by running the visual job on windows-latest, where the baselines were made. Not fixed: the suite is still single platform. | 2026-08-30 |
+| NEW-01 | **HIGH** | Endpoint tests read `AUSPICE_DATABASE_URL`, not the test database, because `app.deps.get_connection` uses the non test engine. Locally the two URLs name different databases; in CI they name the same one, so the fault is invisible there. Measured: `auspice` held 12 jurisdictions, 1 application and 2 ledger entries; `auspice_test` held none. `test_tiles.py` asserted a real tile for northern Virginia against boundaries no test created, and could not have passed in CI. | `tests/conftest.py`, `tests/unit/test_tiles.py`, `apps/api/app/deps.py` | CLOSED 2026-08-31. Tile tests seed their own geography; shared `api_client` fixture; autouse guard raises if the override is forgotten. Not in the original audit. | 2026-08-31 |
 | P1-7 | LOW | `slowapi` is declared in the `api` extra and in the mypy overrides while `ratelimit.py` implements its own token bucket. | `pyproject.toml` | OPEN | 2026-08-30 |
 | P2-1 | MEDIUM | Models are fitted at startup inside `lifespan`, including MCMC. The artefact loading seam is named in a docstring and not implemented. | `apps/api/app/deps.py` | OPEN | 2026-08-30 |
 | P2-2 | MEDIUM | `monitor/watcher.py` writes rows to an `alert` table and nothing delivers them, so the monitoring line the specification calls the reason revenue recurs has no channel. | `monitor/watcher.py` | OPEN | 2026-08-30 |
@@ -120,6 +121,23 @@ unit project from 21 tests to 35.
 
 **What survived:** the real defect was narrower than claimed and is now closed. The tests existed and
 never ran, because CI never invoked Playwright. That was P1-5.
+
+---
+
+
+### 2026-08-31: the ledger was reported as empty and is not
+
+**Claimed:** Ledger entries published: 0.
+
+**Actually:** `uv run auspice ledger status` reports 2 predictions published, 2 still pending, chain
+intact. The accuracy record is empty because nothing has resolved, which is a different statement.
+
+**How the error happened:** taken from the README's "what this does not do yet" section and from the
+no-record branch in `public_record`, rather than from a query. A claim about the state of the data has to
+come from the data.
+
+**What it changes:** Task 17 is not starting from zero. The moat has begun accruing, which moves the
+argument for scheduled publishing from "start the clock" to "keep it running".
 
 ---
 

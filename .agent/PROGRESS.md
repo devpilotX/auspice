@@ -134,3 +134,53 @@ Two tooling notes that cost time and are recorded so they are not rediscovered:
         appears nowhere in .next/static and nowhere in prerendered HTML or JSON.
         No NEXT_PUBLIC_ variable carrying a key, secret or token exists in source.
         PHASE B COMPLETE. All four P0 blockers closed. Next: Phase C correctness.
+
+[04:10] PHASE C. Task 8, healthz. Three defects not one: database never set False, the Db
+        dependency raising before the handler body, and a third I introduced by fixing the
+        second. chain_ok has three states and 'is not False' counted 'could not find out'
+        as healthy, so a readable database with an unreadable ledger reported status ok
+        with a detail line saying verification failed. Now 'is True'.
+        Proved the tests fail against the original handler: assert True is False on the
+        flag, assert True is None on the verdict, unhandled RuntimeError on the ledger case.
+        Also found one of my own tests passing for the wrong reason: it passed in isolation
+        only because app.state.models was absent. Now stubs the models.
+[04:35] Task 9. Twelve handlers were async def and none awaited anything. Converted, plus
+        one await removed. Guard walks the route table. Two errors first: app.routes on
+        FastAPI 0.141.1 wraps included routers in _IncludedRouter exposing original_router,
+        so a single level scan found 1 route of 12 and passed while examining nothing.
+        Proved the guard by reverting jurisdiction_tile to async def.
+        Moved the healthz reasoning out of the docstring into comments, because FastAPI
+        publishes a docstring as the /docs description and a partner engineer does not need
+        three paragraphs about our bugs. openapi.json back to byte identical.
+[06:00] Task 10 part 1. verify_head, constant cost, two statements with LIMIT 1. Catches
+        tail deletion and head corruption, documented as not catching mid chain tampering,
+        with a test that fails if that ever changes silently. Extracted the tail deletion
+        detector so the cheap and full paths share one rule.
+[06:57] Task 10 part 2. Rejected the planned persisted checkpoint: a writable 'verified up
+        to N' row lets anyone who can write it make the verifier skip what they tampered
+        with. Used a Postgres side payload digest as a cache key instead. My first key was
+        head hash plus row count and was WRONG: editing an earlier payload changes neither.
+        There is now a test proving that collision would have happened.
+[07:21] Task 10 part 3. Aggregates moved into SQL, entries list made opt in, export streamed
+        rather than assembled, ETag on both public endpoints keyed to the chain head.
+        No default page size: a publisher that decides how much of its own accuracy record
+        to show has given up what the record is for.
+[07:37] NEW-01 FOUND AND FIXED, and it is worse than most of the original audit because it
+        made other results untrustworthy. Endpoint tests read AUSPICE_DATABASE_URL, not the
+        test database. Measured: auspice held 12 jurisdictions, 1 application, 2 ledger
+        entries; auspice_test held zero of each. test_tiles asserted a real tile for
+        northern Virginia and passed against boundaries no test created, and could not have
+        passed in CI where auspice_test has no registry.
+        Fixed three ways: test_tiles seeds its own geography, conftest gains api_client, and
+        an autouse guard raises with an explanation if the override is forgotten. Blast
+        radius measured before keeping the guard: two tests. Proved the guard fires.
+[07:40] CORRECTION to the audit: the ledger is NOT empty. auspice holds 2 published
+        predictions and the chain verifies. The zero came from the README and a code path
+        rather than a query.
+[07:46] Fourth CRLF incident, conftest.py. 336 phantom changed lines, repaired to 152
+        insertions 14 deletions and amended.
+[07:55] Session may restart. Wrote .agent/RESUME.md as the single entry point for a fresh
+        session. State: 9 of 25 tasks, 17 commits, 17 tags, 351 python tests, 43 web unit
+        tests, all gates green, main untouched at 2d8efdf, tree clean.
+        Operator authorised a push to GitHub on condition everything is verified end to end.
+        Condition NOT met. When met: push the agent branch only, no force, open a PR.
