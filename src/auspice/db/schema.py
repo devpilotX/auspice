@@ -1386,6 +1386,13 @@ alert = Table(
     Column("score_before", Numeric(6, 5), nullable=True),
     Column("score_after", Numeric(6, 5), nullable=True),
     Column("delivered_at", DateTime(timezone=True), nullable=True),
+    # Delivery bookkeeping. An alert product whose queue can be blocked by one permanently failing
+    # recipient is an alert product that stops delivering, silently, and nobody notices because the
+    # symptom is an absence. The attempt count is what lets a poison row be skipped rather than
+    # retried forever, and the last error is what lets an operator see why without reading logs.
+    Column("delivery_attempts", Integer, nullable=False, server_default=text("0")),
+    Column("delivery_error", Text, nullable=True),
+    Column("delivery_channel", Text, nullable=True),
     Column("suppressed_reason", Text, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=_now),
     UniqueConstraint("watch_id", "change_event_id", name="uq_alert_watch_id_change_event_id"),

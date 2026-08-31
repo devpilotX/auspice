@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import date, timedelta
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 from sqlalchemy import text
@@ -16,6 +16,9 @@ from sqlalchemy import text
 from auspice.cli.output import ABSENT, console, fail, heading, note, ok, render_table
 from auspice.db import transaction
 from auspice.domain import UseClass
+
+if TYPE_CHECKING:
+    from auspice.monitor.delivery import Channel
 
 ingest_app = typer.Typer(no_args_is_help=True, help="Stage 1: fetch, hash, store, dead letter.")
 parse_app = typer.Typer(no_args_is_help=True, help="Stage 2: the document cascade.")
@@ -616,6 +619,163 @@ def monitor_pending() -> None:
         ],
         numeric=("materiality",),
     )
+
+
+@monitor_app.command("deliver")
+def monitor_deliver(
+    limit: Annotated[int, typer.Option(help="Send at most this many, 0 for all")] = 0,
+    dry_run: Annotated[
+        bool, typer.Option(help="Show what would be sent without sending it")
+    ] = False,
+    channel: Annotated[
+        str | None,
+        typer.Option(help="Override the configured channel: log, webhook or smtp"),
+    ] = None,
+) -> None:
+    """Send the pending alerts through the configured channel.
+
+    Delivery is at least once. The send happens, then the row is marked, then the transaction
+    commits, so a crash in between re-sends rather than losing the alert. For a product whose promise
+    is that you find out before the hearing, a duplicate is an annoyance and a miss is a broken
+    promise.
+    """
+    from auspice.errors import StageUnavailableError
+    from auspice.monitor import deliver_pending, get_channel
+    from auspice.monitor.delivery import LogChannel, WebhookChannel
+
+    heading("Delivering alerts")
+    try:
+        resolved = get_channel() if channel is None else _channel_named(channel)
+    except StageUnavailableError as exc:
+        fail(str(exc))
+
+    if isinstance(resolved, LogChannel):
+        note("channel is log, so alerts are written to the structured log rather than sent.")
+    if isinstance(resolved, WebhookChannel):
+        note(f"posting to {resolved.url}")
+
+    with transaction() as conn:
+        report = deliver_pending(conn, channel=resolved, limit=limit or None, dry_run=dry_run)
+
+    render_table(
+        [{"metric": key, "value": value} for key, value in report.as_dict().items()],
+        columns=("metric", "value"),
+    )
+    if report.failures:
+        console.print()
+        render_table(
+            [
+                {"alert": f["id"], "subscriber": f["subscriber"], "error": f["error"][:90]}
+                for f in report.failures
+            ],
+            title="Failures, each retried on the next run until the attempt limit",
+        )
+    console.print()
+    if dry_run:
+        note(f"{report.considered} alert(s) would be sent. Nothing was sent.")
+        return
+    ok(f"{report.delivered} delivered, {report.failed} failed")
+
+
+def _channel_named(name: str) -> Channel:
+    """Resolve a channel by name for the `--channel` override.
+
+    Builds the channel directly rather than temporarily rewriting the cached settings object, which
+    an earlier version did and which mutates global state that other code in the same process reads.
+    """
+    from auspice.config import get_settings
+    from auspice.errors import StageUnavailableError
+    from auspice.monitor.delivery import LogChannel, SmtpChannel, WebhookChannel
+
+    settings = get_settings()
+    if name == "log":
+        return LogChannel()
+    if name == "webhook":
+        if not settings.alert_webhook_url:
+            raise StageUnavailableError(
+                "--channel webhook needs AUSPICE_ALERT_WEBHOOK_URL, which is empty."
+            )
+        return WebhookChannel(url=settings.alert_webhook_url)
+    if name == "smtp":
+        if not settings.alert_smtp_host or not settings.alert_sender:
+            raise StageUnavailableError(
+                "--channel smtp needs AUSPICE_ALERT_SMTP_HOST and AUSPICE_ALERT_SENDER."
+            )
+        return SmtpChannel(
+            host=settings.alert_smtp_host,
+            port=settings.alert_smtp_port,
+            username=settings.alert_smtp_username,
+            password=settings.alert_smtp_password,
+            sender=settings.alert_sender,
+            fallback_recipient=settings.alert_fallback_recipient,
+            starttls=settings.alert_smtp_starttls,
+        )
+    raise StageUnavailableError(f"unknown channel {name!r}. Use log, webhook or smtp.")
+
+
+@monitor_app.command("abandoned")
+def monitor_abandoned() -> None:
+    """Alerts that failed delivery too many times and are no longer retried.
+
+    These are invisible in the pending queue on purpose, so one undeliverable address cannot block
+    every alert behind it. That makes this the list an operator has to actually look at.
+    """
+    from auspice.monitor import abandoned
+
+    heading("Abandoned alerts")
+    with transaction() as conn:
+        rows = abandoned(conn)
+
+    if not rows:
+        ok("none. Every alert either delivered or is still being retried.")
+        return
+
+    render_table(
+        [
+            {
+                "alert": row["id"],
+                "subscriber": row["subscriber"],
+                "jurisdiction": row["slug"],
+                "attempts": row["delivery_attempts"],
+                "error": (row["delivery_error"] or "")[:80],
+            }
+            for row in rows
+        ],
+        numeric=("alert", "attempts"),
+    )
+    console.print()
+    note(
+        "Fix the cause, then reset the attempt count on those rows to put them back in the queue. "
+        "They are not lost."
+    )
+
+
+@monitor_app.command("health")
+def monitor_health() -> None:
+    """Whether alerts are actually going out.
+
+    ``oldest_pending_hours`` is the number that matters. A queue whose oldest entry keeps growing is
+    a delivery outage, and the symptom of a delivery outage is an absence, which nothing else
+    reports.
+    """
+    from auspice.monitor import delivery_health
+
+    heading("Alert delivery health")
+    with transaction() as conn:
+        health = delivery_health(conn)
+
+    render_table(
+        [{"metric": key, "value": value} for key, value in health.items()],
+        columns=("metric", "value"),
+    )
+    console.print()
+    oldest = health["oldest_pending_hours"]
+    if health["abandoned"]:
+        note(f"{health['abandoned']} alert(s) abandoned. Run `auspice monitor abandoned`.")
+    if oldest is not None and oldest > 24:
+        note(f"the oldest undelivered alert is {oldest} hours old. Delivery is not keeping up.")
+    elif health["pending"] == 0 and health["abandoned"] == 0:
+        ok("nothing is stuck")
 
 
 @monitor_app.command("watch")

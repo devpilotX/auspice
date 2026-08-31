@@ -110,6 +110,31 @@ class Settings(BaseSettings):
     ledger_path: Path = Path("data/ledger")
     ledger_anchor_url: str = ""
 
+    # -- Alert delivery ----------------------------------------------------
+    # The default is `log`, which needs no credentials. That is deliberate: an unconfigured
+    # deployment that writes every alert to the structured log is observably doing the right thing
+    # and can be checked by reading the log. The failure to avoid is a deployment that looks healthy
+    # because nothing errored while nothing was sent.
+    #
+    # Setting the channel to webhook or smtp without its required values raises rather than falling
+    # back to the log, because an operator who configured mail wants to hear that it is broken now.
+    alert_channel: Literal["log", "webhook", "smtp"] = "log"
+    alert_max_delivery_attempts: int = Field(default=5, ge=1, le=50)
+    alert_webhook_url: str = ""
+    alert_smtp_host: str = ""
+    alert_smtp_port: int = 587
+    alert_smtp_username: str = ""
+    alert_smtp_password: str = ""
+    alert_smtp_starttls: bool = True
+    alert_sender: str = ""
+    alert_fallback_recipient: str = ""
+    """Where a mail alert goes when the subscriber is not an email address.
+
+    `watch.subscriber` is documented in the schema as an API key label until billing exists, so it is
+    not reliably an address. With this set, such an alert reaches an operator. Without it, the send
+    fails loudly and the alert stays in the queue. Neither option silently drops it.
+    """
+
     # -- Paths -------------------------------------------------------------
     registry_path: Path = Path("data/registry")
     labels_path: Path = Path("data/labels")
