@@ -352,6 +352,10 @@ def _synthetic_feature_row(
         "decided_on": None,
         "staff_recommendation": request.staff_recommendation,
         "applicant_cluster_id": None,
+        # A prospective site names a jurisdiction and optionally coordinates, never a parcel row, so
+        # the geometry features report unknown. Resolving a coordinate pair to a parcel is the next
+        # step and it is a different task: it needs parcel geometry loaded, which no county has yet.
+        "parcel_id": None,
         "legal_framework": context["legal_framework"],
         "discretion_index": float(context["discretion_index"])
         if context["discretion_index"] is not None

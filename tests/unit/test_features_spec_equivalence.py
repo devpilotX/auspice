@@ -169,6 +169,7 @@ def _spec_from_row(conn: Connection, application_id: int) -> ApplicationSpec:
         "decided_on": record["decided_on"],
         "staff_recommendation": record["staff_recommendation"],
         "applicant_cluster_id": record["applicant_cluster_id"],
+        "parcel_id": record["parcel_id"],
         "legal_framework": record["legal_framework"],
         "discretion_index": float(record["discretion_index"])
         if record["discretion_index"] is not None
