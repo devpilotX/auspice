@@ -50,14 +50,12 @@ CRLF_ON_CHECKOUT = frozenset({".ps1", ".bat", ".cmd"})
 
 
 def tracked_files() -> list[str]:
-    result = subprocess.run(  # noqa: S603
-        ["git", "ls-files"], capture_output=True, check=True, text=True
-    )
+    result = subprocess.run(["git", "ls-files"], capture_output=True, check=True, text=True)
     return [line for line in result.stdout.splitlines() if line.strip()]
 
 
 def blob_of(path: str) -> bytes:
-    result = subprocess.run(  # noqa: S603
+    result = subprocess.run(
         ["git", "cat-file", "blob", f"HEAD:{path}"], capture_output=True, check=False
     )
     return result.stdout if result.returncode == 0 else b""
@@ -85,7 +83,11 @@ def main() -> int:
     print(f"{len(offenders)} tracked blob(s) are stored with CRLF, against the declared policy:")
     for path, count in offenders:
         suffix = Path(path).suffix.lower()
-        note = " (checked out as CRLF by policy, but the blob must still be LF)" if suffix in CRLF_ON_CHECKOUT else ""
+        note = (
+            " (checked out as CRLF by policy, but the blob must still be LF)"
+            if suffix in CRLF_ON_CHECKOUT
+            else ""
+        )
         print(f"  {path}: {count} CRLF line(s){note}")
     print()
     print("Fix with:")
