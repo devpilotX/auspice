@@ -47,7 +47,7 @@ this file against reality before continuing, and resume at the first TODO.
 | 14 | Labelling console | DONE | `labels quote` and `labels add`, 32 tests, exercised against a live county source, checkpoint/021 |
 | 15 | Extraction accuracy against the golden set | PARKED | D-003, no key available |
 | 16 | Corpus backfill for the twelve counties | TODO | |
-| 17 | Start the ledger accruing | TODO | |
+| 17 | Start the ledger accruing | DONE | `ledger reconcile` and `ledger accrual`, 24 tests, checkpoint/034 |
 | 18 | External ledger anchoring | DONE | 22 tests, exposed on the accuracy endpoint, checkpoint/026 |
 
 ## Phase F, product and operations

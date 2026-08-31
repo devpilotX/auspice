@@ -111,6 +111,103 @@ def anchors() -> None:
         note("Set AUSPICE_LEDGER_ANCHOR_URL to anchor. Until then the guarantee is internal only.")
 
 
+@app.command("reconcile")
+def reconcile(
+    dry_run: Annotated[
+        bool, typer.Option(help="Show what would be graded without grading it")
+    ] = False,
+    limit: Annotated[int, typer.Option(help="Grade at most this many, 0 for all")] = 0,
+) -> None:
+    """Grade every published prediction whose application has since reached a terminal outcome.
+
+    This is what makes the ledger accrue. Without it an outcome can land in the graph while the prediction
+    made about it sits unresolved forever, so the accuracy page keeps saying nothing has resolved when the
+    answer is already in the database. That is worse than an empty record: an empty record is honest about
+    being empty, and one that stays empty while outcomes arrive has quietly stopped working.
+    """
+    from auspice import ledger
+
+    heading("Reconciling the ledger against the graph")
+    with transaction() as conn:
+        report = ledger.reconcile(conn, dry_run=dry_run, limit=limit or None)
+
+    if report.rows:
+        render_table(
+            [
+                {
+                    "seq": row["seq"],
+                    "public id": row["public_id"],
+                    "jurisdiction": row["jurisdiction"],
+                    "outcome": row["outcome"],
+                    "predicted": row["predicted"] if row["predicted"] is not None else ABSENT,
+                    "miss": "yes" if row["miss"] else "",
+                }
+                for row in report.rows
+            ],
+            numeric=("seq", "predicted"),
+        )
+        console.print()
+
+    render_table(
+        [{"metric": key, "value": value} for key, value in report.as_dict().items()],
+        columns=("metric", "value"),
+    )
+
+    if report.failures:
+        console.print()
+        render_table(
+            [{"seq": f["seq"], "reason": f["reason"][:90]} for f in report.failures],
+            numeric=("seq",),
+            title="Skipped, each with its reason",
+        )
+
+    console.print()
+    if dry_run:
+        note(f"{report.considered} entr(ies) would be graded. Nothing was written.")
+        return
+    if report.graded == 0:
+        ok("nothing to grade. Every published prediction is either resolved or still pending.")
+        return
+    ok(f"{report.graded} graded, {report.misses} of them recorded as misses")
+    if report.misses:
+        note(
+            "A miss carries a factual note naming the numbers. The explanation of what the model missed "
+            "is written by a person, and section 8.5 publishes it either way."
+        )
+
+
+@app.command("accrual")
+def accrual() -> None:
+    """Whether the ledger is accruing, which is a different question from whether it is intact.
+
+    ``gradeable_now`` above zero means an outcome is sitting in the graph unrecorded on the public record,
+    so the accuracy page is understating what is already known.
+    """
+    from auspice import ledger
+
+    heading("Ledger accrual")
+    with transaction() as conn:
+        status = ledger.accrual_status(conn)
+
+    render_table(
+        [
+            {"metric": key, "value": value if value is not None else ABSENT}
+            for key, value in status.items()
+        ],
+        columns=("metric", "value"),
+    )
+    console.print()
+    if status["gradeable_now"]:
+        note(
+            f"{status['gradeable_now']} published prediction(s) can be graded now. "
+            "Run `auspice ledger reconcile`."
+        )
+    elif status["published"] == 0:
+        note("nothing has been published yet. `auspice score site --publish` starts the record.")
+    else:
+        ok("every resolved outcome in the graph is recorded on the public record")
+
+
 @app.command("verify")
 def verify() -> None:
     """Recompute the whole hash chain and report the first sequence that does not check out."""

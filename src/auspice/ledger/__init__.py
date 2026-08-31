@@ -2,6 +2,14 @@
 
 from __future__ import annotations
 
+from auspice.ledger.accrual import (
+    MISS_THRESHOLD,
+    ReconcileReport,
+    Resolvable,
+    accrual_status,
+    reconcile,
+    resolvable,
+)
 from auspice.ledger.anchor import (
     Anchor,
     AnchorError,
@@ -36,13 +44,17 @@ from auspice.ledger.chain import (
 
 __all__ = [
     "GENESIS_HASH",
+    "MISS_THRESHOLD",
     "Anchor",
     "AnchorError",
     "AnchorStatus",
     "HttpAnchor",
     "LedgerEntry",
     "Receipt",
+    "ReconcileReport",
+    "Resolvable",
     "VerificationReport",
+    "accrual_status",
     "anchor_head",
     "anchor_status",
     "canonical_json",
@@ -56,8 +68,10 @@ __all__ = [
     "link",
     "public_record",
     "publish",
+    "reconcile",
     "require_intact",
     "reset_verification_cache",
+    "resolvable",
     "unresolved_older_than",
     "verify",
     "verify_cached",
