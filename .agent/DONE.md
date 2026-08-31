@@ -38,37 +38,46 @@ OPERATOR means the agent cannot execute it under the constraints of this run and
 
 ## Gate 6 evidence, 2026-08-31
 
-Run twice. The first run found two defects and both were fixed rather than worked around, which is what
-the gate is for.
+Run four times. It found five defects that no local run could, which is the entire argument for the gate.
+Every one was fixed rather than worked around.
 
-First run: `tests/unit/test_backup.py::TestBinaryDiscovery::test_the_client_binaries_are_found` failed,
-because it asserted an environment precondition. `.tools/` is ignored and created by
-`infra/scripts/bootstrap-postgres.ps1`, so a clone that has not been bootstrapped has no client binaries
-and no defect. It now skips with that reason and still fails if `pg_dump` is on PATH and undiscoverable.
+1. `test_the_client_binaries_are_found` asserted an environment precondition rather than a code property.
+   `.tools/` is ignored and created by the bootstrap script, so a clone that has not been bootstrapped has
+   no client binaries and no defect. It now skips with that reason, and still fails if `pg_dump` is on
+   PATH and undiscoverable.
+2. `pyproject.toml` checked out CRLF despite `.gitattributes` declaring `eol=lf`. Git will not convert a
+   blob already stored as CRLF, so two files predating the policy survived the repository wide
+   renormalisation. `tools/check_line_endings.py` now scans stored blobs and runs in CI.
+3. ruff had never run against `tools/check_line_endings.py`, because it was added and only the writing
+   check was run against it.
+4. `scripts/check-types-current.mjs` joined the repository root with `node_modules` to find the
+   openapi-typescript CLI, which worked only while npm happened to hoist that package. Regenerating the
+   lock for the postcss override moved it, and the check began failing with "Cannot find module". It now
+   reads the package's own `bin` field.
+5. `packages/shared-types/src/generated/` was gitignored while `types:check` compares against it and
+   `tsc` compiles against it, so **the CI web job could not have been passing**. Now tracked. And
+   `tools/export_openapi.py` wrote platform newlines, so a clone checked out LF and a regeneration
+   produced CRLF and the document was reported stale when only the newlines differed.
 
-Also first run: `pyproject.toml` checked out with CRLF despite `.gitattributes` declaring `eol=lf`.
-Scanning stored blobs rather than the working tree showed why. Git will not convert a blob already stored
-as CRLF, so two files that predated the policy survived the repository wide renormalisation.
-`tools/check_line_endings.py` now scans blobs and runs in CI.
-
-Second run, from a clone at `571883d`:
+Final run, from a clone at `cb200f2`, every command's exit code recorded:
 
 ```
-uv sync --all-extras                                  ok
-uv run ruff check .                                   All checks passed!
-uv run ruff format --check .                           148 files already formatted
-uv run python -m mypy                                  Success: no issues found in 121 source files
-uv run python tools/check_writing.py                   writing rules pass: 180 files checked
-uv run python tools/check_line_endings.py              253 tracked text blobs, all stored LF
-uv run python -m pytest -q                             532 passed, 1 skipped
-npm ci                                                 ok
-npm run types:generate && npm run types:check          openapi document and generated types are current
-npm run lint                                           clean
-npm run typecheck                                      clean
-npm run check:tokens --workspace apps/web              77 defined, 34 files checked
-npm run test --workspace apps/web                      43 passed
-npm run build --workspace apps/web                     ok
-npm run budget --workspace apps/web                    within budget
+uv sync --all-extras                                   0
+npm ci                                                 0
+uv run ruff check .                                    0
+uv run ruff format --check .                           0
+uv run python -m mypy                                  0
+uv run python tools/check_writing.py                   0
+uv run python tools/check_line_endings.py              0
+uv run python -m pytest -q                             0   623 passed, 1 skipped
+npm run audit:check                                    0   0 advisories, 0 allowed
+npm run types:check                                    0
+npm run lint                                           0
+npm run typecheck                                      0
+npm run check:tokens --workspace apps/web              0
+npm run test --workspace apps/web                      0   72 passed
+npm run build --workspace apps/web                     0
+npm run budget --workspace apps/web                    0
 ```
 
 The one skip is the client binary test above, with its reason printed. `.env` was copied in, because the
