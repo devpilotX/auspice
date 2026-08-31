@@ -49,7 +49,12 @@ COPY src/ ./src/
 
 # --frozen refuses to update the lockfile. A deploy that silently resolves a different version than the
 # one tested is a deploy of something that was never tested. --no-dev leaves ruff, mypy and pytest out.
-RUN uv sync --frozen --no-dev --extra api --extra memo
+#
+# observability carries sentry-sdk. It is installed even though AUSPICE_SENTRY_DSN is empty by default,
+# because the alternative is a container where setting the DSN logs "configured but not installed" and
+# reports nothing. A dependency present and unused costs a few megabytes; error reporting that silently
+# does not work costs an incident.
+RUN uv sync --frozen --no-dev --extra api --extra memo --extra observability
 
 # ---------------------------------------------------------------------------
 # Runtime.
