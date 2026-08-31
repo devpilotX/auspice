@@ -1288,7 +1288,7 @@
             "type": "string"
           },
           "disclaimer": {
-            "default": "This is a probabilistic opinion with a disclosed methodology. It is not legal advice, not an appraisal, and not a guarantee. Auspice models published voting records and stated positions, never inferred motives, and never predicts how a named individual will vote.",
+            "default": "This is a probabilistic opinion with a disclosed methodology. It is not legal advice, not an appraisal, and not a guarantee. Permission Bureau models published voting records and stated positions, never inferred motives, and never predicts how a named individual will vote.",
             "title": "Disclaimer",
             "type": "string"
           },
@@ -1837,7 +1837,7 @@
   "info": {
     "description": "Calibrated permission risk forecasts with a published accuracy record.\n\nEvery response carries an interval and a data date. When the evidence is too thin the response abstains, and an abstention is a successful response rather than an error. The accuracy record and the jurisdiction profiles are public and need no key.",
     "summary": "A rating bureau for the right to build.",
-    "title": "Auspice",
+    "title": "Permission Bureau",
     "version": "0.1.0"
   },
   "openapi": "3.1.0",

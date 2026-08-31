@@ -400,7 +400,7 @@ def methodology() -> dict[str, Any]:
             for spec in FEATURES
         ],
         "disclaimer": (
-            "Auspice produces a probabilistic opinion with a disclosed methodology. It is not legal "
+            "Permission Bureau produces a probabilistic opinion with a disclosed methodology. It is not legal "
             "advice, not an appraisal and not a guarantee. It models published voting records and "
             "stated positions, never inferred motives, and never predicts how a named individual will "
             "vote."

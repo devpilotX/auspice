@@ -96,7 +96,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 settings = get_settings()
 
 app = FastAPI(
-    title="Auspice",
+    title="Permission Bureau",
     version=__version__,
     summary="A rating bureau for the right to build.",
     description=(

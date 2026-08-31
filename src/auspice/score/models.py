@@ -228,7 +228,7 @@ class Provenance(Frozen):
     disclaimer: str = Field(
         default=(
             "This is a probabilistic opinion with a disclosed methodology. It is not legal advice, "
-            "not an appraisal, and not a guarantee. Auspice models published voting records and "
+            "not an appraisal, and not a guarantee. Permission Bureau models published voting records and "
             "stated positions, never inferred motives, and never predicts how a named individual "
             "will vote."
         )

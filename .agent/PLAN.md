@@ -37,7 +37,7 @@ this file against reality before continuing, and resume at the first TODO.
 
 | # | Task | Status | Evidence |
 |---|---|---|---|
-| 12 | Brand surface to Permission Bureau | DEFERRED to last | ADR-001. See A-016: it is pure copy, it depends on a trademark opinion the operator does not have, and doing it after every feature exists is one pass over final copy instead of two |
+| 12 | Brand surface to Permission Bureau | DONE, checkpoint/029 | ADR-001. See A-016: it is pure copy, it depends on a trademark opinion the operator does not have, and doing it after every feature exists is one pass over final copy instead of two |
 | 13 | Code namespace rename | PARKED | A-002, deliberately last and parkable |
 
 ## Phase E, the binding constraint

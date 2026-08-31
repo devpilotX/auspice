@@ -1,18 +1,18 @@
 # Terms of use
 
-Last revised 27 August 2026. These terms have not been reviewed by counsel. They describe what Auspice
+Last revised 27 August 2026. These terms have not been reviewed by counsel. They describe what Permission Bureau
 actually does and what it will not stand behind, written by the people who built it. Before this product is
 sold, a lawyer in the relevant jurisdiction should read them. That statement is here rather than in a
 footnote because a terms page that implies legal review it has not had is worse than no terms page.
 
-## What Auspice sells
+## What Permission Bureau sells
 
 An opinion, expressed as a probability, about whether a specific project will be permitted at a specific
 location, together with the evidence behind it and a published record of how accurate previous opinions
 turned out to be.
 
 That is the whole product. It is not a permit, not a guarantee, not an appraisal, not an insurance policy,
-and not legal advice. Nobody at Auspice can make a county approve your application, and nothing here
+and not legal advice. Nobody at Permission Bureau can make a county approve your application, and nothing here
 changes the outcome of a vote.
 
 ## What the number is and is not
@@ -76,7 +76,7 @@ days we refuse to score at all rather than answer from rules that may no longer 
 
 ## Liability
 
-To the extent the law allows, Auspice is not liable for any decision made in reliance on a score, a memo,
+To the extent the law allows, Permission Bureau is not liable for any decision made in reliance on a score, a memo,
 an abstention, or anything else on this site. Permitting decisions involve discretion exercised by elected
 and appointed people, and a probabilistic opinion about what they will do is not a substitute for your own
 diligence, your own counsel, or your own reading of the record.
@@ -87,5 +87,5 @@ itself.
 ## Contact
 
 Questions about these terms, or a factual dispute about a published prediction, should go to the operator
-of your Auspice deployment. This repository does not publish a contact address, because the deployment that
+of your Permission Bureau deployment. This repository does not publish a contact address, because the deployment that
 serves you may not be ours.
