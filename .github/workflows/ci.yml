@@ -332,6 +332,65 @@ jobs:
             throw 'API did not become healthy within 120 seconds'
           }
 
+          # The data state the screenshots are about to assert against, printed rather than assumed.
+          #
+          # Both full page screenshots below render entirely from these two payloads, so a screenshot
+          # difference is either a layout change or a data change and the log has to be able to tell
+          # them apart. Without this the only evidence is a PNG inside an artifact, which cannot be read
+          # without downloading and unzipping it, and a reviewer comparing two images by eye cannot see
+          # that a section shrank because a table is empty rather than because a style moved.
+          #
+          # It runs here rather than in a step of its own because the API is a child of this shell and
+          # stops servicing loopback once the shell exits, which is the failure this step exists to avoid.
+          $diagnostic = @'
+          import http.client
+          import json
+
+
+          def get(path):
+              connection = http.client.HTTPConnection("127.0.0.1", 8000, timeout=15)
+              try:
+                  connection.request("GET", path)
+                  response = connection.getresponse()
+                  return response.status, json.loads(response.read().decode("utf-8"))
+              finally:
+                  connection.close()
+
+
+          status, accuracy = get("/v1/public/accuracy")
+          print(f"== /v1/public/accuracy HTTP {status}")
+          for key in ("published", "resolved", "pending", "answered", "abstained", "brier_score"):
+              print(f"   {key} = {accuracy.get(key)!r}")
+          print(f"   chain = {json.dumps(accuracy.get('chain'), sort_keys=True)}")
+          print(f"   anchor = {json.dumps(accuracy.get('anchor'), sort_keys=True)[:300]}")
+          print(f"   misses = {len(accuracy.get('misses') or [])}")
+          print(f"   kill_test present = {accuracy.get('kill_test') is not None}")
+          print(f"   reliability present = {accuracy.get('reliability') is not None}")
+          print(f"   statement = {str(accuracy.get('statement'))[:160]}")
+
+          status, profile = get("/v1/public/jurisdictions/us-va-loudoun")
+          print(f"== /v1/public/jurisdictions/us-va-loudoun HTTP {status}")
+          summary = profile.get("summary") or {}
+          for key in sorted(summary):
+              print(f"   summary.{key} = {summary[key]!r}")
+          print(f"   decisions = {profile.get('decisions')!r}")
+          print(f"   approval_rate_by_use_class = {json.dumps(profile.get('approval_rate_by_use_class'), sort_keys=True)}")
+          bodies = profile.get("bodies") or []
+          print(f"   bodies = {len(bodies)}")
+          for body in bodies:
+              print(f"     body {body.get('name')!r} seats={body.get('seats')!r} quorum={body.get('quorum')!r} threshold={body.get('vote_threshold')!r} binding={body.get('recommendation_is_binding')!r}")
+          instruments = profile.get("instruments") or []
+          print(f"   instruments = {len(instruments)}")
+          for instrument in instruments:
+              print(f"     instrument {instrument.get('kind')!r} {instrument.get('citation')!r} adopted={instrument.get('adopted_on')!r} expires={instrument.get('expires_on')!r} restrictions={json.dumps(instrument.get('restrictions'))[:200]}")
+          elections = profile.get("next_elections") or []
+          print(f"   next_elections = {len(elections)}")
+          for election in elections:
+              print(f"     election {election.get('body')!r} {election.get('election_date')!r} seats={election.get('seats_contested')!r}")
+          '@
+          $diagnostic | & $python -
+          if ($LASTEXITCODE -ne 0) { throw 'the data state diagnostic could not read the API' }
+
           npm run build --workspace apps/web
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
