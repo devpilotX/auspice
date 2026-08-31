@@ -2033,8 +2033,43 @@
     },
     "/v1/public/ledger": {
       "get": {
-        "description": "The whole ledger, so anyone can verify it without using our interface.\n\nA record that can only be checked through the publisher's own tooling is not a public record.",
+        "description": "The whole ledger, so anyone can verify it without using our interface.\n\nA record that can only be checked through the publisher's own tooling is not a public record, so this\ndefaults to everything and there is no page size the caller cannot turn off. What changed is how it is\nsent: streamed a line at a time rather than assembled into one string first. The record grows forever\nby design, and an endpoint that materialises all of it to serve it is an endpoint whose memory cost\ngrows with the thing the company is trying to accumulate.\n\n``after`` and ``limit`` exist for a consumer fetching in slices, not for us deciding how much of our\nown record to show. Both are optional and neither is applied unless asked for.",
         "operationId": "ledger_export_v1_public_ledger_get",
+        "parameters": [
+          {
+            "description": "Return entries after this sequence number",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Return entries after this sequence number",
+              "minimum": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Maximum entries to return",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 100000,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Maximum entries to return",
+              "title": "Limit"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2045,6 +2080,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "The full prediction ledger, newline delimited JSON",
