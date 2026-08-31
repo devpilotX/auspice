@@ -73,3 +73,57 @@ a diff of 69 insertions and 60 deletions, rewriting every line. The repository h
 that rewrites a whole file hides the actual change from review.
 
 **Reversal trigger:** If a `.gitattributes` is added normalising the repository, this becomes moot.
+
+
+## ADR-002: Prospective scoring builds features from a specification, not from a written row
+
+Date: 2026-08-31 | Trigger: audit finding P1-4, uncapped savepoints in the read path | Reversibility: easy
+
+**Decision:** Remove the savepoint from the scoring path. `ApplicationSpec` is a `TypedDict` describing
+the exact record shape `features/builder._build` consumes, `build_for_spec` is the public entry point,
+and `score/engine._synthetic_feature_row` constructs the specification in memory. `build_for_application`
+is unchanged in signature and now reads a row into the same shape.
+
+**Rationale:** The finding asked for a cap. A cap would have to be at least 500 to leave the documented
+500 site portfolio working, so it would never fire, and it would leave the underlying inversion in place:
+a read endpoint that requires write capability. `_build` already takes a mapping and never re-reads
+`application` after it, so the seam existed and was simply not exposed. Measured consequences of the old
+path, per site scored: one subtransaction, one dead tuple in the graph's primary table, one burned
+sequence value. A 500 site portfolio produced 500 of each inside a single long lived snapshot, and 13 per
+site when alternatives are enabled.
+
+**Rejected:** Capping the count, because the cap could never fire without breaking the product.
+Reusing one savepoint for a whole batch, because a single failure would then poison every site in the
+request, where per site savepoints isolated failures. A dataclass instead of a `TypedDict`, because a
+dataclass invites default values and a field defaulted for a prospective site is a feature that is
+silently wrong rather than reported missing.
+
+**Dissent:** BREAKER held that refactoring the leakage critical path risks a silent feature difference
+that no test catches, and would only accept the change with a proof of equivalence. That objection is
+answered rather than overruled: `tests/unit/test_features_spec_equivalence.py` builds one real
+application by both routes and requires identical values, identical missing sets, identical as-of and
+identical application id, and a companion test asserts the comparison is not vacuous by requiring at
+least ten populated features and three comparable decisions.
+
+**Also from the pre-mortem:** the most likely future incident was a column added to `application` that
+`_build` begins reading, leaving the historical path working and the prospective path raising
+`KeyError` in production. Two mechanisms close it. Strict mypy rejects an `ApplicationSpec` literal
+missing a key, and a test parses `_build` with `ast` and asserts the set of keys it reads equals the set
+the type declares, in both directions.
+
+**Second pre-mortem finding, fixed:** the old INSERT chose the decision body with
+`ORDER BY seats DESC NULLS LAST LIMIT 1`, which is not deterministic when two bodies have equal seats.
+`_PROSPECTIVE_CONTEXT_SQL` adds `b.id` as a tiebreaker, so the same site cannot score two ways. The test
+seeds two bodies with different seat counts so the choice is exercised rather than trivially satisfied.
+
+**Not done in this task, deliberately:** `app.deps.get_connection` still opens a writable transaction.
+Removing the write from scoring makes a read only connection possible, and serving scores from a hot
+standby possible after that, but changing the connection dependency in the same checkpoint would make a
+rollback unable to separate the two behaviours. Logged as A-015.
+
+**Reversal trigger:** If a feature is ever needed that genuinely requires the application row to exist
+in the database, for example a feature computed by a trigger or a generated column, `build_for_spec`
+cannot serve it and the savepoint returns. `months_to_decision` is a generated column today and is not
+read by `_build`, so this is not currently the case.
+
+**Checkpoint:** checkpoint/019-no-savepoint-scoring

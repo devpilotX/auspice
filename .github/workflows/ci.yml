@@ -164,13 +164,12 @@ jobs:
         # document reader. They existed and never ran automatically, because this job never invoked
         # playwright at all. A test that is not wired into CI is a test that stops being true.
         #
-        # PLAYWRIGHT_BASE_URL is set so the webServer block in playwright.config.ts evaluates to
-        # undefined. These tests import two pure functions; starting a Next server to run them would add
-        # a minute and a class of failure that has nothing to do with what is under test.
-        run: npx playwright test --project=unit
-        working-directory: apps/web
-        env:
-          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+        # No server is started. playwright.config.ts reads the requested projects and omits its
+        # webServer block when only the unit project is selected, so this needs no environment override.
+        # It previously set PLAYWRIGHT_BASE_URL to a port nothing was listening on, purely as a way to
+        # switch the server off, which would have sent a stray page.goto to a dead socket.
+        run: npm run test --workspace apps/web
+        working-directory: .
 
       - name: Build
         run: npm run build --workspace apps/web
@@ -224,8 +223,8 @@ jobs:
         # playwright.config.ts starts `npm run start` itself when PLAYWRIGHT_BASE_URL is unset, so no
         # server needs starting here. This is the suite that caught two content security policy bugs that
         # lint, types and the build all passed, and until now it ran only when someone remembered to.
-        run: npx playwright test --project=light --project=dark
-        working-directory: apps/web
+        run: npm run test:visual --workspace apps/web
+        working-directory: .
 
       - name: Upload the report when it fails
         if: failure()

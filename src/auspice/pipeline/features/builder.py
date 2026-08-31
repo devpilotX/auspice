@@ -37,7 +37,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any
+from typing import Any, TypedDict
 
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -709,12 +709,67 @@ _APPLICATION_SQL = text(
 )
 
 
+class ApplicationSpec(TypedDict):
+    """The exact shape ``_build`` reads, and therefore the contract of the feature builder.
+
+    This is one type with two producers. ``_APPLICATION_SQL`` produces it for an application that
+    exists in the graph. ``score/engine.py`` produces it in memory for a prospective site that does
+    not exist and must never be written. Both then call the same ``_build``.
+
+    Why a ``TypedDict`` rather than a dataclass: it describes the result of a query rather than
+    introducing a second model of the application, and ``total=True`` with no defaults means adding a
+    field here without populating it at every producer is a type error rather than a runtime
+    ``KeyError`` in production. That is the failure this type exists to prevent, because the
+    historical path would keep working while the prospective path broke.
+
+    Fields the query selects but ``_build`` never reads are deliberately absent: ``outcome``,
+    ``censored``, ``months_to_decision``, ``jurisdiction_slug`` and ``region``. Adding them here
+    would oblige the prospective producer to invent values it does not have.
+    """
+
+    id: int
+    jurisdiction_id: int
+    body_id: int | None
+    use_class: str
+    relief_sought: list[str]
+    by_right: bool | None
+    acres: float | None
+    capacity_mw: float | None
+    filed_on: date | None
+    decided_on: date | None
+    staff_recommendation: str | None
+    applicant_cluster_id: int | None
+    legal_framework: str | None
+    discretion_index: float | None
+    parcel_acres: float | None
+    prior_industrial_use: bool | None
+    entity_opacity: bool | None
+
+
 def build_for_application(
     conn: Connection, application_id: int, *, as_of: date | None = None
 ) -> FeatureRow:
     """Build one row. ``as_of`` defaults to the filing date, which is the honest choice."""
     record = conn.execute(_APPLICATION_SQL, {"application_id": application_id}).mappings().one()
     return _build(conn, record, as_of=as_of)
+
+
+def build_for_spec(
+    conn: Connection, spec: ApplicationSpec, *, as_of: date | None = None
+) -> FeatureRow:
+    """Build one row from a specification rather than from a row id.
+
+    This is the entry point for a prospective site. It exists so that scoring a site that does not
+    exist requires no write: the previous implementation inserted an application inside a savepoint,
+    built features against it and rolled the savepoint back, which made every read of the scoring
+    endpoint a write, produced one dead tuple in ``application`` per site scored, and opened one
+    subtransaction per site with no bound on the count in a five hundred site portfolio.
+
+    The equivalence that matters is asserted by a test rather than by this docstring:
+    ``tests/unit/test_features_spec_equivalence.py`` builds one real application by both routes and
+    requires identical values and identical missing sets.
+    """
+    return _build(conn, spec, as_of=as_of)
 
 
 def _build(conn: Connection, record: Any, *, as_of: date | None) -> FeatureRow:

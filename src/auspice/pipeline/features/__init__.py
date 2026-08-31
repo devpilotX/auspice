@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from auspice.pipeline.features.builder import (
+    ApplicationSpec,
     BuildReport,
     FeatureRow,
     build_all,
     build_for_application,
+    build_for_spec,
 )
 from auspice.pipeline.features.dictionary import (
     BY_NAME,
@@ -28,6 +30,7 @@ __all__ = [
     "FEATURES",
     "FEATURE_SET_VERSION",
     "MIN_COVERAGE",
+    "ApplicationSpec",
     "BuildReport",
     "Direction",
     "FeatureGroup",
@@ -35,6 +38,7 @@ __all__ = [
     "FeatureSpec",
     "build_all",
     "build_for_application",
+    "build_for_spec",
     "describe",
     "feature_names",
     "select_usable",

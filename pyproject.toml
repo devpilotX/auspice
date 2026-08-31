@@ -64,7 +64,6 @@ api = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "python-multipart>=0.0.12",
-    "slowapi>=0.1.9",
 ]
 transcribe = [
     "faster-whisper>=1.0.3",
@@ -218,7 +217,6 @@ module = [
     "faster_whisper.*",
     "selectolax.*",
     "feedparser.*",
-    "slowapi.*",
     # These ship no type information. Every call into them is at a module boundary that
     # converts to a typed value immediately, and the conversion is where the checking happens.
     "boto3.*",
