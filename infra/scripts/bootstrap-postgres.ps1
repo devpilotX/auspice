@@ -15,12 +15,13 @@
     nothing is registered as a Windows service, so removing the two directories
     removes the database completely.
 
-    The production target is the official postgis/postgis Docker image, which is what
-    infra/docker-compose.yml uses. This script exists because a Windows laptop without
-    Docker Desktop or admin rights still has to be able to run the migrations and the
-    spatial tests. The pgvector build is a third party Windows compilation, noted in
-    docs/OPERATIONS.md, because pgvector ships no official Windows binary and building
-    it needs the MSVC toolchain.
+    The production target is the repository-owned image built by infra/Dockerfile.db,
+    which infra/docker-compose.yml uses. That image is based on a digest-pinned official
+    PostGIS image and adds a checksum-pinned pgvector package. This script exists because
+    a Windows laptop without Docker Desktop or admin rights still has to be able to run
+    the migrations and the spatial tests. The pgvector build is a third party Windows
+    compilation, noted in docs/OPERATIONS.md, because pgvector ships no official Windows
+    binary and building it needs the MSVC toolchain.
 
 .PARAMETER Port
     Loopback port for the cluster. Defaults to 55432 to stay clear of a system install.

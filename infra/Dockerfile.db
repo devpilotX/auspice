@@ -1,0 +1,16 @@
+# syntax=docker/dockerfile:1.7
+
+# The digest is the exact PostgreSQL 17 and PostGIS 3.5 image exercised by CI.
+FROM postgis/postgis:17-3.5@sha256:624f5195b91d424dbebf018890148cc0e5a3e80db5467da8b53cc2ed2ce49216
+
+# The PostGIS image installs from PGDG but does not include pgvector. Install the
+# matching Debian 11 PostgreSQL 17 package as a checksum-pinned artifact so a
+# moved or replaced package fails the build rather than changing the database.
+ADD --checksum=sha256:ff0e10806fd87268e2dfac6b2d0aaa5fc2c24341188e7c24f3db7fd112c90f87 \
+    https://apt.postgresql.org/pub/repos/apt/pool/main/p/pgvector/postgresql-17-pgvector_0.8.5-1.pgdg11+1_amd64.deb \
+    /tmp/postgresql-17-pgvector.deb
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends /tmp/postgresql-17-pgvector.deb \
+    && rm -f /tmp/postgresql-17-pgvector.deb \
+    && rm -rf /var/lib/apt/lists/*

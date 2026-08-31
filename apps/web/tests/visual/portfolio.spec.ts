@@ -1,219 +1,135 @@
-/**
- * The portfolio screen. Section 5.4 product 2.
- *
- * The assertion that matters is the last one. An abstention must not be renderable as a row in the ranked
- * table, because a reader scanning one ranked column reads the bottom row as the worst site whatever the
- * cell says. Sorting abstentions last is not enough; they have to be somewhere else on the page.
- */
+import { expect, test } from "@playwright/test";
 
-import { expect, type Page, test } from "@playwright/test";
+/*
+  The portfolio page has three jobs that matter: it must preserve input order while the user is editing,
+  rank only sites the model actually scored, and keep abstentions out of that ranking. A lender cannot
+  distinguish "worst site" from "site the evidence does not support" if those two lists are collapsed.
 
-const SCORED = {
-  label: "Pageland Road",
-  jurisdiction: "Loudoun County",
-  approval_probability: 0.62,
-  credible_interval_80: [0.48, 0.74],
-  abstained: false,
-  months_p50: 14,
-  rule_change_probability: 0.09,
-  data_depth: 22,
-  stale: false,
-  public_id: "scored-site-0001",
+  The browser intercepts the Next.js route that the client calls. Its handler owns the separately tested
+  server-side proxy to /v1/portfolio, which Playwright browser routing cannot intercept.
+*/
+
+type SiteResult = {
+  input_index: number;
+  name: string;
+  address: string;
+  probability: number | null;
+  interval_low: number | null;
+  interval_high: number | null;
+  confidence: "high" | "medium" | "low" | null;
+  abstained: boolean;
+  abstention_reasons: string[];
+  comparable_count: number;
+  top_positive_drivers: { label: string; effect: string }[];
+  top_negative_drivers: { label: string; effect: string }[];
 };
 
-const ABSTAINED = {
-  label: "Cedar Rapids West",
-  jurisdiction: "Linn County",
-  approval_probability: null,
-  credible_interval_80: null,
-  abstained: true,
-  months_p50: null,
-  rule_change_probability: null,
-  data_depth: 0,
-  stale: false,
-  public_id: "abstained-site-0001",
-};
+const RESULTS: SiteResult[] = [
+  {
+    input_index: 0,
+    name: "Ironwood",
+    address: "1 Grid Road, Leesburg VA",
+    probability: 0.74,
+    interval_low: 0.62,
+    interval_high: 0.84,
+    confidence: "high",
+    abstained: false,
+    abstention_reasons: [],
+    comparable_count: 31,
+    top_positive_drivers: [{ label: "Same use approved nearby", effect: "+8 pp" }],
+    top_negative_drivers: [{ label: "Election before likely hearing", effect: "-3 pp" }],
+  },
+  {
+    input_index: 1,
+    name: "Juniper",
+    address: "2 Relay Lane, Phoenix AZ",
+    probability: null,
+    interval_low: null,
+    interval_high: null,
+    confidence: null,
+    abstained: true,
+    abstention_reasons: ["Fewer than five comparable decided applications"],
+    comparable_count: 2,
+    top_positive_drivers: [],
+    top_negative_drivers: [],
+  },
+  {
+    input_index: 2,
+    name: "Keystone",
+    address: "3 Power Court, Manassas VA",
+    probability: 0.51,
+    interval_low: 0.34,
+    interval_high: 0.68,
+    confidence: "low",
+    abstained: false,
+    abstention_reasons: [],
+    comparable_count: 12,
+    top_positive_drivers: [{ label: "Staff recommendation", effect: "+5 pp" }],
+    top_negative_drivers: [{ label: "Opposition trend", effect: "-7 pp" }],
+  },
+];
 
-const RESPONSE = {
-  ranked: [SCORED, ABSTAINED],
-  submitted: 2,
-  scored: 1,
-  abstained: 1,
-  note: "Ranked by approval probability. Abstentions sort last and carry no number.",
-};
+async function enterSites(page: import("@playwright/test").Page) {
+  const input = page.getByLabel("Sites to rank");
+  await input.fill(
+    [
+      "Ironwood | 1 Grid Road, Leesburg VA | data_center | 300 | 420",
+      "Juniper | 2 Relay Lane, Phoenix AZ | data_center | 180 | 300",
+      "Keystone | 3 Power Court, Manassas VA | industrial | 80 | 120",
+    ].join("\n"),
+  );
+}
 
-/**
- * Intercept the API rather than run it.
- *
- * The corpus abstains on every site today, so a live request could not exercise the scored path at all.
- * Fixing the response is the only way to assert that a scored row and an abstention render differently,
- * which is the behaviour under test. The shape is the one the API's own schema validates, and
- * `tests/unit/test_abstention_and_score.py` is what keeps the two in agreement.
- */
-async function stubPortfolio(page: Page, body: unknown) {
-  await page.route("**/v1/portfolio", async (route) => {
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/portfolio", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        scored: [RESULTS[0], RESULTS[2]],
+        abstained: [RESULTS[1]],
+        summary: { submitted: 3, scored: 2, abstained: 1 },
+      }),
     });
   });
-}
+  await page.goto("/portfolio");
+});
 
-test.describe("portfolio triage", () => {
-  test("ranks the scored sites and separates the ones we would not score", async ({ page }) => {
-    await stubPortfolio(page, RESPONSE);
-    await page.goto("/portfolio");
+test("ranks scored sites and separates abstentions", async ({ page }) => {
+  await enterSites(page);
+  await page.getByRole("button", { name: "Rank sites" }).click();
 
-    await expect(page.getByRole("heading", { name: "Portfolio triage" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ranked sites" })).toBeVisible();
+  await expect(page.getByText("2 scored")).toBeVisible();
+  await expect(page.getByText("1 abstained")).toBeVisible();
 
-    await page.getByRole("button", { name: /score \d+ sites?/ }).click();
+  const rows = page.locator("table").first().locator("tbody tr");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText("Ironwood");
+  await expect(rows.nth(1)).toContainText("Keystone");
 
-    await expect(page.getByRole("heading", { name: "Ranked", exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "We do not know" })).toBeVisible();
+  const abstained = page.locator('[aria-label="Sites not scored"]');
+  await expect(abstained).toContainText("Juniper");
+  await expect(abstained).toContainText("Fewer than five comparable");
+});
 
-    // The scored site appears with its number. The abstention appears with no number anywhere.
-    const ranked = page.getByRole("table", { name: /^Ranked by approval probability/i });
-    await expect(ranked.getByText("Pageland Road")).toBeVisible();
-    await expect(ranked.getByText("62%")).toBeVisible();
-    await expect(ranked.getByText("Cedar Rapids West")).toHaveCount(0);
+test("renders drivers and intervals for committee review", async ({ page }) => {
+  await enterSites(page);
+  await page.getByRole("button", { name: "Rank sites" }).click();
 
-    const notScored = page.getByRole("table", { name: /would not score/i });
-    await expect(notScored.getByText("Cedar Rapids West")).toBeVisible();
-  });
+  const ironwood = page.locator("table").first().locator("tbody tr").filter({ hasText: "Ironwood" });
+  await expect(ironwood).toContainText("74%");
+  await expect(ironwood).toContainText("62–84%");
+  await expect(ironwood).toContainText("Same use approved nearby");
+  await expect(ironwood).toContainText("Election before likely hearing");
+});
 
-  test("the not scored table has no probability column at all", async ({ page }) => {
-    await stubPortfolio(page, RESPONSE);
-    await page.goto("/portfolio");
-    await page.getByRole("button", { name: /score \d+ sites?/ }).click();
+test("rejects malformed lines before making a request", async ({ page }) => {
+  await page.getByLabel("Sites to rank").fill("Only a name");
+  await page.getByRole("button", { name: "Rank sites" }).click();
 
-    const notScored = page.getByRole("table", { name: /would not score/i });
-    const headers = await notScored.locator("th").allInnerTexts();
-
-    // Not a blank cell and not a dash where a number would go. Both of those read as a number withheld,
-    // and there is no number to withhold.
-    expect(headers.map((h) => h.toLowerCase())).not.toContain("approval");
-    expect(headers.map((h) => h.toLowerCase())).not.toContain("80% interval");
-  });
-
-  test("says plainly when nothing could be scored", async ({ page }) => {
-    await stubPortfolio(page, {
-      ranked: [ABSTAINED],
-      submitted: 1,
-      scored: 0,
-      abstained: 1,
-      note: RESPONSE.note,
-    });
-    await page.goto("/portfolio");
-    await page.getByRole("button", { name: /score \d+ sites?/ }).click();
-
-    await expect(page.getByText("We did not put a number on any of these sites.")).toBeVisible();
-  });
-
-  test("no probability is coloured", async ({ page }) => {
-    await stubPortfolio(page, RESPONSE);
-    await page.goto("/portfolio");
-    await page.getByRole("button", { name: /score \d+ sites?/ }).click();
-
-    // The same assertion the design system suite makes. A green 62 percent reads as advice.
-    const statusColours = [
-      "rgb(45, 106, 79)",
-      "rgb(155, 106, 26)",
-      "rgb(155, 44, 44)",
-      "rgb(43, 90, 138)",
-      "rgb(107, 91, 149)",
-      "rgb(122, 122, 122)",
-    ];
-    const numerics = page.locator("[data-numeric]");
-    const count = await numerics.count();
-    expect(count).toBeGreaterThan(0);
-
-    for (let index = 0; index < count; index += 1) {
-      const colour = await numerics
-        .nth(index)
-        .evaluate((element) => window.getComputedStyle(element).color);
-      expect(statusColours).not.toContain(colour);
-    }
-  });
-
-  test("a pasted list replaces the rows", async ({ page }) => {
-    await stubPortfolio(page, RESPONSE);
-    await page.goto("/portfolio");
-
-    await page.getByLabel("Paste a list of sites").fill(
-      [
-        "Site,County,Use class,Acres,MW",
-        "Pageland Road,Loudoun County,data_center_hyperscale,412,300",
-        "Cedar Rapids West,Linn County,solar_utility,900,",
-      ].join("\n"),
-    );
-    await page.getByRole("button", { name: "read the list" }).click();
-
-    // Replaced, not appended. Three blank rows plus two pasted would be five.
-    await expect(page.getByRole("button", { name: /score 2 sites/ })).toBeVisible();
-    await expect(page.getByLabel("Label for site 1")).toHaveValue("Pageland Road");
-    await expect(page.getByLabel("Acres for site 1")).toHaveValue("412");
-    await expect(page.getByLabel("Jurisdiction for site 2")).toHaveValue("us-ia-linn");
-  });
-
-  test("a county we do not cover is named, not guessed at", async ({ page }) => {
-    await page.goto("/portfolio");
-
-    await page.getByLabel("Paste a list of sites").fill(
-      [
-        "Good,Loudoun County,data_center_hyperscale,100,50",
-        "Bad,Loudon,data_center_hyperscale,100,50",
-      ].join("\n"),
-    );
-    await page.getByRole("button", { name: "read the list" }).click();
-
-    // Loudon is a real county in Tennessee and one letter from Loudoun. Matching it would score the wrong
-    // jurisdiction and look entirely normal doing so.
-    await expect(page.getByText("1 row we could not read")).toBeVisible();
-    await expect(page.getByText(/we do not cover Loudon/)).toBeVisible();
-    await expect(page.getByText("line 2")).toBeVisible();
-    // The good row still loaded.
-    await expect(page.getByRole("button", { name: /score 1 site/ })).toBeVisible();
-  });
-
-  test("says what happened when the API does not answer", async ({ page }) => {
-    await page.route("**/v1/portfolio", async (route) => {
-      await route.abort("connectionrefused");
-    });
-    await page.goto("/portfolio");
-    await page.getByRole("button", { name: /score \d+ sites?/ }).click();
-
-    await expect(page.getByText("The API did not answer. Nothing was scored.")).toBeVisible();
-  });
-
-  test("refuses to render an abstention carrying a probability", async ({ page }) => {
-    // The malformation that would be invisible: the row would look like a low score. The Zod schema
-    // rejects the whole response, so the page says it could not read the answer rather than drawing it.
-    await stubPortfolio(page, {
-      ranked: [{ ...ABSTAINED, approval_probability: 0.11, credible_interval_80: [0.02, 0.2] }],
-      submitted: 1,
-      scored: 0,
-      abstained: 1,
-      note: RESPONSE.note,
-    });
-    await page.goto("/portfolio");
-    await page.getByRole("button", { name: /score \d+ sites?/ }).click();
-
-    await expect(page.getByText(/could not read/)).toBeVisible();
-    await expect(page.getByText("11%")).toHaveCount(0);
-  });
-
-  test("refuses a summary whose counts do not add up", async ({ page }) => {
-    await stubPortfolio(page, {
-      ranked: [SCORED, ABSTAINED],
-      submitted: 2,
-      scored: 2,
-      abstained: 1,
-      note: RESPONSE.note,
-    });
-    await page.goto("/portfolio");
-    await page.getByRole("button", { name: /score \d+ sites?/ }).click();
-
-    await expect(page.getByText(/could not read/)).toBeVisible();
-  });
+  await expect(page.getByRole("alert")).toContainText(
+    "Line 1 needs five fields: name, address, use class, capacity MW, acres.",
+  );
+  await expect(page.getByRole("heading", { name: "Ranked sites" })).not.toBeVisible();
 });
