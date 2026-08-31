@@ -98,6 +98,10 @@ def run_migrations_online() -> None:
     connectable = engine_from_config(section, prefix="sqlalchemy.", poolclass=pool.NullPool)
 
     with connectable.connect() as connection:
+        # PostGIS 3.5 adds its TIGER and topology schemas to the database search path.
+        # Restrict Alembic to the application-owned schema before it reflects tables.
+        connection.exec_driver_sql("SET search_path TO public")
+        connection.commit()
         context.configure(connection=connection, **_configure_common())
         with context.begin_transaction():
             context.run_migrations()

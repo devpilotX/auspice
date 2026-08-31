@@ -298,19 +298,21 @@ jobs:
         shell: pwsh
         run: |
           $ready = $false
+          $lastError = 'no response received'
           for ($attempt = 1; $attempt -le 60; $attempt++) {
             try {
-              $response = Invoke-WebRequest -Uri 'http://127.0.0.1:8000/healthz' -UseBasicParsing -TimeoutSec 2
+              $response = Invoke-WebRequest -Uri 'http://127.0.0.1:8000/healthz' -UseBasicParsing -NoProxy -TimeoutSec 2
               if ($response.StatusCode -eq 200) {
                 $ready = $true
                 break
               }
             } catch {
-              # The bounded loop reports both API streams if startup never completes.
+              $lastError = $_.Exception.Message
             }
             Start-Sleep -Seconds 2
           }
           if (-not $ready) {
+            Write-Host "Last health probe error: $lastError"
             Get-Content (Join-Path $env:RUNNER_TEMP 'auspice-api.stdout.log') -Tail 200 -ErrorAction SilentlyContinue
             Get-Content (Join-Path $env:RUNNER_TEMP 'auspice-api.stderr.log') -Tail 200 -ErrorAction SilentlyContinue
             throw 'API did not become healthy within 120 seconds'
