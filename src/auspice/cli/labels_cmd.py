@@ -130,6 +130,46 @@ def load() -> None:
     ok(
         f"{report.decisions} decisions, {report.instruments} instruments, {report.citations} citations"
     )
+    _warn_about_stale_features()
+
+
+def _warn_about_stale_features() -> None:
+    """Tell the operator when a freshly loaded row cannot reach the models yet.
+
+    Loading a label does not build its feature snapshot, and the dataset excludes any application without
+    one at the current feature set version. So a label can load successfully and be invisible to every
+    model, and the only sign is a note in the serving log that says "1 row(s) excluded". Measured on
+    2026-08-31: the corpus held one labelled decision and the dataset held zero, for exactly this reason.
+
+    Not fixed by making `labels load` build features itself. That would make a corpus command do model
+    work, and `features build` reports per feature coverage that an operator needs to read.
+    """
+    from auspice.pipeline.features import FEATURE_SET_VERSION
+
+    with transaction() as conn:
+        missing = int(
+            conn.execute(
+                text(
+                    """
+                    SELECT count(*)
+                    FROM application a
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM feature_snapshot fs
+                        WHERE fs.application_id = a.id
+                          AND fs.feature_set_version = :version
+                    )
+                    """
+                ).bindparams(version=FEATURE_SET_VERSION)
+            ).scalar_one()
+        )
+
+    if not missing:
+        return
+    console.print()
+    note(
+        f"{missing} application(s) have no feature snapshot at version {FEATURE_SET_VERSION}, so the "
+        "dataset excludes them and no model can see them. Run `auspice features build`."
+    )
 
 
 @app.command("stats")

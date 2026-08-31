@@ -72,7 +72,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         from auspice.score import load_serving_models
 
+        # Timed, because audit finding P2-1 asks for an artefact loading seam so that startup does not
+        # refit, and whether that is worth building is a question about this number rather than about
+        # the principle. Measured on 2026-08-31 against the live corpus: 3 to 9 milliseconds, with no
+        # classifier fitted at all, because the hierarchical model needs 40 training rows and the graph
+        # has 1. Building a cache for that would add a pickle deserialisation surface and a staleness
+        # risk to the one system whose value is provenance, in order to save three milliseconds. So it
+        # is measured on every start instead, and the decision is revisited when the number says to.
+        fit_started = time.perf_counter()
         models = load_serving_models(conn)
+        fit_seconds = time.perf_counter() - fit_started
 
     app.state.models = models
     app.state.started_at = time.time()
@@ -80,6 +89,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         "api ready",
         serving=models.primary_kind,
         decisions=models.dataset.decided.height,
+        fit_seconds=round(fit_seconds, 3),
         environment=settings.env.value,
         error_tracking=tracking,
         metrics_endpoint=bool(settings.metrics_token),
