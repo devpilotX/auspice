@@ -14,24 +14,22 @@ import process from "node:process";
 
 /** @type {{ package: string, reason: string, reviewBy: string }[]} */
 const ALLOWED = [
-  {
-    package: "postcss",
-    reason:
-      "Build time only. The advisories concern source map handling of attacker controlled CSS, and " +
-      "every stylesheet in this project is authored in the repository. No user supplied CSS reaches " +
-      "the build, and postcss does not run at request time. The only fix npm offers is Next 16, which " +
-      "is a major upgrade the build specification locks against, so this is assessed rather than " +
-      "patched.",
-    reviewBy: "2026-11-01",
-  },
-  {
-    package: "next",
-    reason:
-      "Reported only as a consequence of the bundled postcss above. Next itself is pinned to 15.5.24, " +
-      "which carries the fixes for the six advisories that affected 15.5.4, including the critical " +
-      "image optimizer denial of service. Verified by re-running npm audit after the pin.",
-    reviewBy: "2026-11-01",
-  },
+  // Empty, and that is the goal state rather than an oversight.
+  //
+  // This list previously held postcss and next. The four postcss advisories, one of them high, were
+  // assessed as build time only and allowed, because the only fix npm offered was `npm audit fix
+  // --force` to Next 16, a major upgrade. That assessment was sound and the conclusion was avoidable:
+  // an `overrides` entry in the root package.json forces the patched postcss under the existing
+  // framework, and `npm audit` then reports zero advisories rather than two allowed ones.
+  //
+  // The entries were removed rather than left in place. An allowlist entry for a fixed advisory is a
+  // mute button for a problem that no longer exists, and it would hide the regression if the override
+  // were ever dropped and the vulnerable version came back.
+  //
+  // Getting the override to apply took a clean install. `npm install` with an existing lock and
+  // node_modules reports "up to date" and does not re-resolve, so the override appears to be ignored.
+  // Removing both and reinstalling applies it. Worth knowing before concluding an override does not
+  // work.
 ];
 
 const BLOCKING = new Set(["critical", "high", "moderate"]);

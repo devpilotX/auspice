@@ -37,7 +37,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any
+from typing import Any, TypedDict
 
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -295,6 +295,80 @@ _RULES_SQL = text(
          FROM in_force WHERE restrictions ? 'setback_ft') AS binding_setback_ft
     """
 )
+
+
+_PARCEL_CONTEXT_SQL = text(
+    """
+    WITH subject AS (
+        SELECT p.geom, p.jurisdiction_id
+        FROM parcel p
+        WHERE p.id = :parcel_id
+          AND p.valid_from <= :as_of
+          AND (p.valid_to IS NULL OR p.valid_to > :as_of)
+    )
+    SELECT
+        (
+            SELECT min(ST_Distance(s.geom::geography, n.geom::geography))
+            FROM subject s
+            JOIN parcel n
+              ON n.id <> :parcel_id
+             AND n.jurisdiction_id = s.jurisdiction_id
+             -- Bi-temporal on both sides. A parcel subdivided into house lots in 2025 must not make a
+             -- 2023 site look adjacent to housing it was not adjacent to.
+             AND n.valid_from <= :as_of
+             AND (n.valid_to IS NULL OR n.valid_to > :as_of)
+             AND n.current_zoning IS NOT NULL
+             AND lower(n.current_zoning) ~ :residential_pattern
+        ) AS distance_to_residential_m
+    FROM subject
+    """
+)
+"""Distance from a parcel to the nearest residentially zoned parcel, as it stood on ``as_of``.
+
+Two features come out of this one query, which is why it is one query. ``distance_to_residential_m`` is
+the number directly. ``setback_compliance_margin_ft`` is the same distance in feet, compared against the
+setback the ordinance in force requires, because a data centre setback is written as a distance from
+residential property lines: that is the quantity the ordinance regulates.
+
+Geography rather than geometry, so the answer is in metres on the ellipsoid instead of in degrees. A
+degree of longitude is 111 km at the equator and 78 km in northern Virginia, so a geometry distance would
+be a different feature in every county.
+
+``ST_Distance`` returns zero for touching or overlapping polygons, which is correct: a site abutting
+housing has no separation, and that is the strongest form of this signal rather than a missing value.
+"""
+
+# What counts as residential in an assessor's zoning string. Deliberately narrow: a false positive here
+# invents a constraint that does not exist, and reporting the feature as unknown is the honest
+# alternative to guessing. Anchored on a word boundary so "AR" agricultural and "MR" mineral reserve do
+# not match, and "PRD" planned residential does.
+RESIDENTIAL_ZONING_PATTERN = (
+    r"(^|[^a-z])(r-?[0-9]+|rr|rsf|rmf|rm|sfr|mfr|prd|pud-r|res(idential)?)([^a-z]|$)"
+)
+
+
+def _parcel_context(conn: Connection, *, parcel_id: int, as_of: date) -> float | None:
+    """Metres to the nearest residential parcel, or None when it cannot be known.
+
+    None means one of three things and all of them are unknown rather than far: the application has no
+    parcel, the parcel has no geometry valid on ``as_of``, or no neighbouring parcel in this
+    jurisdiction has a zoning string at all. Returning a large number for any of them would tell the
+    model the site is comfortably isolated on the strength of missing data.
+    """
+    row = conn.execute(
+        _PARCEL_CONTEXT_SQL,
+        {
+            "parcel_id": parcel_id,
+            "as_of": as_of,
+            "residential_pattern": RESIDENTIAL_ZONING_PATTERN,
+        },
+    ).first()
+    if row is None or row.distance_to_residential_m is None:
+        return None
+    return float(row.distance_to_residential_m)
+
+
+METRES_TO_FEET = 3.28084
 
 
 def _group_b(
@@ -692,6 +766,7 @@ _APPLICATION_SQL = text(
         a.applicant_cluster_id,
         a.censored,
         a.months_to_decision,
+        a.parcel_id,
         j.slug        AS jurisdiction_slug,
         j.region,
         j.legal_framework,
@@ -709,6 +784,44 @@ _APPLICATION_SQL = text(
 )
 
 
+class ApplicationSpec(TypedDict):
+    """The exact shape ``_build`` reads, and therefore the contract of the feature builder.
+
+    This is one type with two producers. ``_APPLICATION_SQL`` produces it for an application that
+    exists in the graph. ``score/engine.py`` produces it in memory for a prospective site that does
+    not exist and must never be written. Both then call the same ``_build``.
+
+    Why a ``TypedDict`` rather than a dataclass: it describes the result of a query rather than
+    introducing a second model of the application, and ``total=True`` with no defaults means adding a
+    field here without populating it at every producer is a type error rather than a runtime
+    ``KeyError`` in production. That is the failure this type exists to prevent, because the
+    historical path would keep working while the prospective path broke.
+
+    Fields the query selects but ``_build`` never reads are deliberately absent: ``outcome``,
+    ``censored``, ``months_to_decision``, ``jurisdiction_slug`` and ``region``. Adding them here
+    would oblige the prospective producer to invent values it does not have.
+    """
+
+    id: int
+    jurisdiction_id: int
+    body_id: int | None
+    use_class: str
+    relief_sought: list[str]
+    by_right: bool | None
+    acres: float | None
+    capacity_mw: float | None
+    filed_on: date | None
+    decided_on: date | None
+    staff_recommendation: str | None
+    applicant_cluster_id: int | None
+    parcel_id: int | None
+    legal_framework: str | None
+    discretion_index: float | None
+    parcel_acres: float | None
+    prior_industrial_use: bool | None
+    entity_opacity: bool | None
+
+
 def build_for_application(
     conn: Connection, application_id: int, *, as_of: date | None = None
 ) -> FeatureRow:
@@ -717,9 +830,38 @@ def build_for_application(
     return _build(conn, record, as_of=as_of)
 
 
+def build_for_spec(
+    conn: Connection, spec: ApplicationSpec, *, as_of: date | None = None
+) -> FeatureRow:
+    """Build one row from a specification rather than from a row id.
+
+    This is the entry point for a prospective site. It exists so that scoring a site that does not
+    exist requires no write: the previous implementation inserted an application inside a savepoint,
+    built features against it and rolled the savepoint back, which made every read of the scoring
+    endpoint a write, produced one dead tuple in ``application`` per site scored, and opened one
+    subtransaction per site with no bound on the count in a five hundred site portfolio.
+
+    The equivalence that matters is asserted by a test rather than by this docstring:
+    ``tests/unit/test_features_spec_equivalence.py`` builds one real application by both routes and
+    requires identical values and identical missing sets.
+    """
+    return _build(conn, spec, as_of=as_of)
+
+
 def _build(conn: Connection, record: Any, *, as_of: date | None) -> FeatureRow:
     resolved_as_of = as_of or record["filed_on"] or record["decided_on"] or date.today()
     row = FeatureRow(application_id=int(record["id"]), as_of=resolved_as_of)
+
+    # One query, two features. Both were hardcoded to None at these call sites, so
+    # setback_compliance_margin_ft and distance_to_residential_m could not fire even with parcel
+    # geometry loaded: the features existed, the dictionary described them, and nothing could ever
+    # populate them. The docstring on _PARCEL_CONTEXT_SQL explains why one distance answers both.
+    parcel_id = record["parcel_id"]
+    distance_m = (
+        _parcel_context(conn, parcel_id=int(parcel_id), as_of=resolved_as_of)
+        if parcel_id is not None
+        else None
+    )
 
     _group_a(
         conn,
@@ -737,7 +879,7 @@ def _build(conn: Connection, record: Any, *, as_of: date | None) -> FeatureRow:
         discretion_index=float(record["discretion_index"])
         if record["discretion_index"] is not None
         else None,
-        parcel_setback_ft=None,
+        parcel_setback_ft=distance_m * METRES_TO_FEET if distance_m is not None else None,
     )
     _group_c(
         conn,
@@ -762,7 +904,7 @@ def _build(conn: Connection, record: Any, *, as_of: date | None) -> FeatureRow:
         else None,
         capacity_mw=float(record["capacity_mw"]) if record["capacity_mw"] is not None else None,
         prior_industrial_use=record["prior_industrial_use"],
-        distance_to_residential_m=None,
+        distance_to_residential_m=distance_m,
     )
     _group_f(
         conn,

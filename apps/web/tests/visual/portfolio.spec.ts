@@ -43,15 +43,17 @@ const RESPONSE = {
 };
 
 /**
- * Intercept the API rather than run it.
+ * Intercept the browser route rather than run scoring.
  *
- * The corpus abstains on every site today, so a live request could not exercise the scored path at all.
- * Fixing the response is the only way to assert that a scored row and an abstention render differently,
- * which is the behaviour under test. The shape is the one the API's own schema validates, and
- * `tests/unit/test_abstention_and_score.py` is what keeps the two in agreement.
+ * The client calls the Next.js /api/portfolio route, whose handler fetches /v1/portfolio from the API on
+ * the server. Playwright browser routing cannot intercept that server-side fetch, and the route handler
+ * has separate unit coverage. The corpus abstains on every site today, so a live scoring request could not
+ * exercise the scored path at all. Fixing the response is the only way to assert that a scored row and an
+ * abstention render differently, which is the behaviour under test. The client schema validates the same
+ * response shape before the page renders it.
  */
 async function stubPortfolio(page: Page, body: unknown) {
-  await page.route("**/v1/portfolio", async (route) => {
+  await page.route("**/api/portfolio", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -177,7 +179,7 @@ test.describe("portfolio triage", () => {
   });
 
   test("says what happened when the API does not answer", async ({ page }) => {
-    await page.route("**/v1/portfolio", async (route) => {
+    await page.route("**/api/portfolio", async (route) => {
       await route.abort("connectionrefused");
     });
     await page.goto("/portfolio");

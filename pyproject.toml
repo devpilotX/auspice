@@ -64,10 +64,29 @@ api = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "python-multipart>=0.0.12",
-    "slowapi>=0.1.9",
 ]
 transcribe = [
     "faster-whisper>=1.0.3",
+]
+memo = [
+    # Headless Chromium, for rendering the committee memo HTML to PDF. The HTML is the artefact of
+    # record and the PDF is a rendering of it, so this is optional: `auspice memo render` writes the
+    # HTML either way and raises StageUnavailableError for the PDF when this extra is absent.
+    #
+    # This extra is the fix for a broken instruction rather than a new feature. memo/generator.py has
+    # told the operator to run `uv sync --extra memo` since it was written, and no such extra existed,
+    # so the priced deliverable could not be produced and the error message named a command that does
+    # nothing. Installing the package is not sufficient on its own: Playwright downloads its browser
+    # separately, with `playwright install chromium`, which infra/Dockerfile.api does at build time.
+    "playwright>=1.55",
+]
+observability = [
+    # Error tracking. Optional, and off unless AUSPICE_SENTRY_DSN is set, so a deployment that reads
+    # nothing but public records does not acquire a third party data processor because a default was
+    # left on. app/observability.py imports this inside a try block and logs a warning if a DSN is
+    # configured while the package is absent, rather than failing to start: the service can still
+    # serve, and the failure being fixed here is error reporting that is silently missing.
+    "sentry-sdk>=2.35",
 ]
 
 [project.scripts]
@@ -206,7 +225,6 @@ module = [
     "faster_whisper.*",
     "selectolax.*",
     "feedparser.*",
-    "slowapi.*",
     # These ship no type information. Every call into them is at a module boundary that
     # converts to a typed value immediately, and the conversion is where the checking happens.
     "boto3.*",

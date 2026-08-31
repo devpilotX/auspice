@@ -379,10 +379,15 @@ export async function post<T>(
   path: string,
   body: unknown,
   schema: z.ZodType<T>,
+  // Which origin to post to. Defaults to the API. The portfolio screen passes an empty string so the
+  // request is relative and reaches this application's own route handler, which holds the API key
+  // server side. A client component cannot be given a key, so the only alternative was calling an
+  // authenticated endpoint without one, which is what it used to do.
+  { origin = BASE_URL }: { origin?: string } = {},
 ): Promise<PostResult<T>> {
   let response: Response;
   try {
-    response = await fetch(`${BASE_URL}${path}`, {
+    response = await fetch(`${origin}${path}`, {
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify(body),
@@ -466,7 +471,12 @@ export const api = {
   jurisdiction: (slug: string) =>
     get(`/v1/public/jurisdictions/${slug}`, jurisdictionProfileSchema),
   methodology: () => get("/v1/public/methodology", z.record(z.string(), z.unknown())),
-  portfolio: (sites: SiteInput[]) => post("/v1/portfolio", { sites }, portfolioResponseSchema),
+  // Posted to this application rather than to the API. src/app/api/portfolio/route.ts attaches the key
+  // and forwards. An empty origin keeps the request relative, so it is same origin and needs no
+  // connect-src entry beyond 'self'. Calling /v1/portfolio directly from here returned 401 anywhere the
+  // API had keys configured, which is everywhere except a development laptop.
+  portfolio: (sites: SiteInput[]) =>
+    post("/api/portfolio", { sites }, portfolioResponseSchema, { origin: "" }),
   locate: (longitude: number, latitude: number) =>
     get(
       `/v1/public/locate?longitude=${encodeURIComponent(longitude)}&latitude=${encodeURIComponent(

@@ -40,8 +40,8 @@ const newsreader = Newsreader({
 
 export const metadata: Metadata = {
   title: {
-    default: "Auspice",
-    template: "%s | Auspice",
+    default: "Permission Bureau",
+    template: "%s | Permission Bureau",
   },
   description:
     "A rating bureau for the right to build. Calibrated permission risk forecasts with a published accuracy record.",
@@ -126,11 +126,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                   style={{
                     fontSize: "var(--text-small)",
                     fontWeight: 600,
-                    letterSpacing: "0.18em",
+                    // 0.18em was tuned for a seven letter mark. At seventeen letters that tracking
+                    // makes the wordmark wider than the navigation beside it, so it comes down rather
+                    // than the name being abbreviated: an abbreviated brand in the header and a full
+                    // one everywhere else reads as two products.
+                    letterSpacing: "0.1em",
                     color: "var(--text-primary)",
                   }}
                 >
-                  Auspice
+                  Permission Bureau
                 </span>
               </Link>
 
@@ -163,7 +167,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 className="max-w-2xl"
                 style={{ fontSize: "var(--text-small)", color: "var(--text-secondary)" }}
               >
-                Auspice produces a probabilistic opinion with a disclosed methodology. It is not legal
+                Permission Bureau produces a probabilistic opinion with a disclosed methodology. It is not legal
                 advice, not an appraisal and not a guarantee. We model published voting records and stated
                 positions, never inferred motives, and we never predict how a named individual will vote.
               </p>

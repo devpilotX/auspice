@@ -2,7 +2,7 @@
 
 Binding. Not a statement of values.
 
-Auspice sells a number that people rely on. The moment we have a side, the number is worth nothing, and no
+Permission Bureau sells a number that people rely on. The moment we have a side, the number is worth nothing, and no
 amount of accuracy repairs that. So the commitments below are constraints on the business rather than
 aspirations for it, and each one is written to be checkable.
 

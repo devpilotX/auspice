@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from collections.abc import Sequence
+from datetime import date
+from typing import Annotated, Any
 
 import typer
 from pydantic import ValidationError
@@ -11,6 +13,13 @@ from sqlalchemy import text
 from auspice.cli.output import console, fail, heading, note, ok, render_table
 from auspice.config import get_settings
 from auspice.db import transaction
+from auspice.domain import (
+    BodyKind,
+    InstrumentKind,
+    Outcome,
+    Relief,
+    UseClass,
+)
 from auspice.models.eval.thresholds import (
     MIN_HELD_OUT_DECISIONS,
     MIN_LABELLED_DECISIONS,
@@ -120,6 +129,46 @@ def load() -> None:
     console.print()
     ok(
         f"{report.decisions} decisions, {report.instruments} instruments, {report.citations} citations"
+    )
+    _warn_about_stale_features()
+
+
+def _warn_about_stale_features() -> None:
+    """Tell the operator when a freshly loaded row cannot reach the models yet.
+
+    Loading a label does not build its feature snapshot, and the dataset excludes any application without
+    one at the current feature set version. So a label can load successfully and be invisible to every
+    model, and the only sign is a note in the serving log that says "1 row(s) excluded". Measured on
+    2026-08-31: the corpus held one labelled decision and the dataset held zero, for exactly this reason.
+
+    Not fixed by making `labels load` build features itself. That would make a corpus command do model
+    work, and `features build` reports per feature coverage that an operator needs to read.
+    """
+    from auspice.pipeline.features import FEATURE_SET_VERSION
+
+    with transaction() as conn:
+        missing = int(
+            conn.execute(
+                text(
+                    """
+                    SELECT count(*)
+                    FROM application a
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM feature_snapshot fs
+                        WHERE fs.application_id = a.id
+                          AND fs.feature_set_version = :version
+                    )
+                    """
+                ).bindparams(version=FEATURE_SET_VERSION)
+            ).scalar_one()
+        )
+
+    if not missing:
+        return
+    console.print()
+    note(
+        f"{missing} application(s) have no feature snapshot at version {FEATURE_SET_VERSION}, so the "
+        "dataset excludes them and no model can see them. Run `auspice features build`."
     )
 
 
@@ -240,6 +289,441 @@ def _print_gap(terminal: int) -> None:
     note("Two routes, and they are complementary. Hand labelling from agendas and minutes, which")
     note("is roughly 30 to 60 rows a day. Or the extraction pipeline with a language model key")
     note("configured, producing candidate rows a human confirms. There is no third route.")
+
+
+@app.command("quote")
+def quote(
+    url: Annotated[str, typer.Option(help="The source document to quote from")],
+    find: Annotated[str, typer.Option(help="A distinctive phrase to search for")],
+    limit: Annotated[int, typer.Option(help="How many candidates to show")] = 8,
+    context: Annotated[bool, typer.Option(help="Show the surrounding text")] = True,
+) -> None:
+    """Print quotable sentences from a document, verbatim, ready to paste into a citation.
+
+    This is the repair tool and the fast path. Three citations in this repository failed
+    verification, all of them transcription errors, and this is how such a row is fixed: search the
+    real document for the phrase, copy the candidate exactly as printed. A quote taken from here
+    cannot fail `auspice labels verify`, because it came out of the same parsed text the verifier
+    matches against.
+    """
+    import asyncio
+
+    from auspice.pipeline.extract.verify import verify_quote
+    from auspice.pipeline.graph import labelling
+
+    heading("Quote candidates")
+    try:
+        document = asyncio.run(labelling.fetch_and_parse(url))
+    except labelling.LabellingError as exc:
+        fail(str(exc))
+
+    note(
+        f"document {document.document_id[:12]}, {document.pages} page(s), {document.characters} characters"
+    )
+    if document.legibility < 0.5:
+        note(
+            f"legibility {document.legibility}. This looks like a scan. Check any candidate below "
+            "reads as the source does before citing it."
+        )
+
+    try:
+        candidates = labelling.find_quote_candidates(document.parsed, find, limit=limit)
+    except labelling.LabellingError as exc:
+        fail(str(exc))
+
+    if not candidates:
+        console.print()
+        note(f"no sentence in this document contains {find!r}.")
+        note("Try fewer words, or a number such as a vote tally, which survives rewording.")
+        raise typer.Exit(1)
+
+    for index, candidate in enumerate(candidates, start=1):
+        console.print()
+        console.print(
+            f"[{index}] page {candidate.page}, characters {candidate.char_start} to {candidate.char_end}"
+        )
+        if context and candidate.context_before:
+            console.print(f"    before: ...{candidate.context_before[-140:]}")
+        console.print(f"    quote:  {candidate.text}")
+        if context and candidate.context_after:
+            console.print(f"    after:  {candidate.context_after[:140]}...")
+        # Belt and braces. The candidate came from the parsed text, so this cannot fail, and it is
+        # cheap enough to run anyway rather than assert the invariant in a comment.
+        if not verify_quote(document.parsed, candidate.text).verified:
+            fail(
+                "a candidate did not verify against the document it came from. That is a defect in "
+                "find_quote_candidates, not in the document. Do not use this output."
+            )
+
+    console.print()
+    ok(f"{len(candidates)} candidate(s), every one verified against {document.document_id[:12]}")
+    note("Copy a quote exactly as printed. Do not retype it and do not tidy the typography.")
+
+
+@app.command("add")
+def add(
+    url: Annotated[str, typer.Option(help="The primary source for this row")],
+    labelled_by: Annotated[str, typer.Option(help="Who is doing the labelling")],
+    jurisdiction: Annotated[
+        str | None, typer.Option(help="Registry slug, for example us-va-loudoun")
+    ] = None,
+    kind: Annotated[
+        str, typer.Option(help="primary for an official record, else secondary")
+    ] = "primary",
+    section: Annotated[str, typer.Option(help="decisions or instruments")] = "decisions",
+) -> None:
+    """Add one labelled row, interactively, quoting from the fetched document.
+
+    The order of work is deliberately inverted from hand editing the file. The document is fetched
+    and parsed first, then the quote is selected out of the parsed text rather than retyped, so exact
+    transcription stops being something a human can get wrong. Everything else is typed against the
+    controlled vocabularies in `domain.py`, so a typo is refused at the prompt rather than surfacing
+    as a validation failure ten rows later.
+
+    One row is written at a time. A session interrupted at row twenty keeps nineteen.
+    """
+    import asyncio
+
+    from auspice.pipeline.graph import labelling
+
+    if section not in {"decisions", "instruments"}:
+        fail(f"section must be decisions or instruments, not {section!r}")
+    if kind not in {"primary", "secondary"}:
+        fail(f"citation kind must be primary or secondary, not {kind!r}")
+
+    settings = get_settings()
+    path = settings.labels_path / labels_module.DEFAULT_LABELS_FILE
+    if not path.exists():
+        fail(f"{path} does not exist. This command edits the corpus, it does not create it.")
+
+    heading("Fetching the source")
+    try:
+        document = asyncio.run(labelling.fetch_and_parse(url))
+    except labelling.LabellingError as exc:
+        fail(str(exc))
+
+    note(
+        f"document {document.document_id[:12]}, {document.pages} page(s), {document.characters} characters"
+    )
+    if document.legibility < 0.5:
+        note(f"legibility {document.legibility}. This is a scan. Read every candidate carefully.")
+
+    taken = labelling.existing_label_ids(path)
+    resolved_jurisdiction = jurisdiction or _prompt_jurisdiction()
+
+    payload: dict[str, Any]
+    if section == "decisions":
+        payload = _prompt_decision(
+            document=document,
+            jurisdiction=resolved_jurisdiction,
+            labelled_by=labelled_by,
+            citation_kind=kind,
+            taken=taken,
+        )
+    else:
+        payload = _prompt_instrument(
+            document=document,
+            jurisdiction=resolved_jurisdiction,
+            labelled_by=labelled_by,
+            citation_kind=kind,
+            taken=taken,
+        )
+
+    console.print()
+    heading("The row as it will be written")
+    console.print(labelling.render_row(payload))
+    if not typer.confirm("Write this row", default=True):
+        note("nothing written")
+        raise typer.Exit(0)
+
+    try:
+        if section == "decisions":
+            label_set = labelling.append_decision(path, payload)
+        else:
+            label_set = labelling.append_instrument(path, payload)
+    except ValidationError as exc:
+        heading("Refused")
+        for error in exc.errors():
+            location = ".".join(str(p) for p in error["loc"])
+            console.print(f"  {location}: {error['msg']}")
+        fail(f"{len(exc.errors())} problem(s). The file was left unchanged.")
+    except labelling.LabellingError as exc:
+        fail(str(exc))
+
+    console.print()
+    ok(f"written to {path}")
+    note(
+        f"{len(label_set.terminal_decisions)} terminal decision(s) now held. "
+        "Commit the file, then run `auspice labels load` and `auspice labels verify`."
+    )
+    _print_gap(len(label_set.terminal_decisions))
+
+
+# ---------------------------------------------------------------------------
+# Prompts
+#
+# Kept here rather than in the labelling module, so that module stays free of input and can be
+# tested without driving a terminal. Everything below is the terminal, and nothing below decides
+# anything: the vocabularies come from domain.py and the validation from the pydantic models.
+# ---------------------------------------------------------------------------
+def _prompt_choice(label: str, options: Sequence[str], *, default: str | None = None) -> str:
+    """One value from a controlled vocabulary, refused until it is in the vocabulary."""
+    console.print()
+    console.print(f"{label}")
+    for index, option in enumerate(options, start=1):
+        console.print(f"  {index:>2}. {option}")
+    while True:
+        raw = typer.prompt("  number or value", default=default, show_default=default is not None)
+        cleaned = str(raw).strip()
+        if cleaned.isdigit() and 1 <= int(cleaned) <= len(options):
+            return options[int(cleaned) - 1]
+        if cleaned in options:
+            return cleaned
+        console.print(f"  not one of the {len(options)} options")
+
+
+def _prompt_multi(label: str, options: Sequence[str]) -> list[str]:
+    """One or more values, comma separated. Refused until every one is in the vocabulary."""
+    while True:
+        chosen = _prompt_choice(label, options)
+        values = [chosen]
+        extra = typer.prompt("  more, comma separated, or blank", default="", show_default=False)
+        for token in str(extra).split(","):
+            cleaned = token.strip()
+            if not cleaned:
+                continue
+            if cleaned in options:
+                values.append(cleaned)
+            elif cleaned.isdigit() and 1 <= int(cleaned) <= len(options):
+                values.append(options[int(cleaned) - 1])
+            else:
+                console.print(f"  {cleaned!r} is not one of the options")
+                break
+        else:
+            # dict.fromkeys rather than set, to keep the order the labeller gave.
+            return list(dict.fromkeys(values))
+
+
+def _prompt_optional_date(label: str) -> date | None:
+    while True:
+        raw = typer.prompt(f"{label} as YYYY-MM-DD, or blank", default="", show_default=False)
+        cleaned = str(raw).strip()
+        if not cleaned:
+            return None
+        try:
+            return date.fromisoformat(cleaned)
+        except ValueError:
+            console.print("  not a date. Use YYYY-MM-DD.")
+
+
+def _prompt_optional_number(label: str) -> float | None:
+    while True:
+        raw = typer.prompt(f"{label}, or blank", default="", show_default=False)
+        cleaned = str(raw).strip()
+        if not cleaned:
+            return None
+        try:
+            value = float(cleaned)
+        except ValueError:
+            console.print("  not a number")
+            continue
+        if value <= 0:
+            console.print("  must be greater than zero. Leave blank if it is unknown.")
+            continue
+        return value
+
+
+def _prompt_optional_int(label: str) -> int | None:
+    while True:
+        raw = typer.prompt(f"{label}, or blank", default="", show_default=False)
+        cleaned = str(raw).strip()
+        if not cleaned:
+            return None
+        if not cleaned.isdigit():
+            console.print("  not a whole number")
+            continue
+        return int(cleaned)
+
+
+def _prompt_jurisdiction() -> str:
+    """A slug that is actually in the registry. A label for an unknown jurisdiction will not load."""
+    from auspice.pipeline.registry import load_registry
+
+    slugs = sorted(j.slug for j in load_registry().jurisdictions)
+    return _prompt_choice("Jurisdiction", slugs)
+
+
+def _prompt_citation(*, document: Any, citation_kind: str, purpose: str) -> dict[str, Any]:
+    """One citation, whose quote is selected from the parsed document rather than typed."""
+    from auspice.pipeline.graph import labelling
+
+    console.print()
+    console.print(f"Quote supporting the {purpose}.")
+    note("Search the document for a distinctive phrase. A vote tally survives rewording best.")
+
+    while True:
+        phrase = str(typer.prompt("  search for")).strip()
+        try:
+            candidates = labelling.find_quote_candidates(document.parsed, phrase)
+        except labelling.LabellingError as exc:
+            console.print(f"  {exc}")
+            continue
+        if not candidates:
+            console.print(f"  no sentence contains {phrase!r}. Try fewer words.")
+            continue
+
+        for index, candidate in enumerate(candidates, start=1):
+            console.print()
+            console.print(f"  [{index}] page {candidate.page}")
+            if candidate.context_before:
+                console.print(f"      before: ...{candidate.context_before[-120:]}")
+            console.print(f"      quote:  {candidate.text}")
+            if candidate.context_after:
+                console.print(f"      after:  {candidate.context_after[:120]}...")
+
+        console.print()
+        chosen = str(
+            typer.prompt(
+                "  number to use, or blank to search again", default="", show_default=False
+            )
+        ).strip()
+        if not chosen:
+            continue
+        if not chosen.isdigit() or not 1 <= int(chosen) <= len(candidates):
+            console.print("  not one of the candidates")
+            continue
+
+        candidate = candidates[int(chosen) - 1]
+        default_title = (document.title or document.url)[:300]
+        title = str(typer.prompt("  document title", default=default_title)).strip()
+        return {
+            "url": document.url,
+            "document_title": title,
+            "quote": candidate.text,
+            "page": candidate.page,
+            "retrieved_on": date.today(),
+            "kind": citation_kind,
+        }
+
+
+def _prompt_decision(
+    *,
+    document: Any,
+    jurisdiction: str,
+    labelled_by: str,
+    citation_kind: str,
+    taken: set[str],
+) -> dict[str, Any]:
+    from auspice.pipeline.graph import labelling
+
+    heading("The decision")
+    case_number = str(
+        typer.prompt("Case number as published, or blank", default="", show_default=False)
+    ).strip()
+    project_name = str(
+        typer.prompt("Project name, or blank", default="", show_default=False)
+    ).strip()
+    applicant = str(typer.prompt("Applicant, or blank", default="", show_default=False)).strip()
+
+    body = _prompt_choice("Deciding body", [b.value for b in BodyKind])
+    use_class = _prompt_choice("Use class", [u.value for u in UseClass])
+    relief = _prompt_multi("Relief sought", [r.value for r in Relief])
+    outcome = _prompt_choice("Outcome", [o.value for o in Outcome])
+
+    filed_on = _prompt_optional_date("Filed on")
+    decided_on = _prompt_optional_date("Decided on")
+    acres = _prompt_optional_number("Acres")
+    capacity_mw = _prompt_optional_number("Capacity in MW")
+    vote_for = _prompt_optional_int("Votes for")
+    vote_against = _prompt_optional_int("Votes against")
+    vote_abstain = _prompt_optional_int("Abstentions")
+
+    subject = project_name or case_number or use_class
+    suggested = labelling.suggest_label_id(
+        jurisdiction=jurisdiction, subject=subject, on=decided_on, taken=sorted(taken)
+    )
+    label_id = str(typer.prompt("Label id", default=suggested)).strip()
+    if label_id in taken:
+        fail(f"label_id {label_id!r} is already used. Ids are never reused.")
+
+    citation = _prompt_citation(document=document, citation_kind=citation_kind, purpose="outcome")
+
+    notes = str(typer.prompt("Notes, or blank", default="", show_default=False)).strip()
+
+    payload: dict[str, Any] = {
+        "label_id": label_id,
+        "jurisdiction": jurisdiction,
+        "labelled_by": labelled_by,
+        "labelled_on": date.today(),
+        "case_number": case_number or None,
+        "body": body,
+        "applicant": applicant or None,
+        "project_name": project_name or None,
+        "use_class": use_class,
+        "relief_sought": relief,
+        "acres": acres,
+        "capacity_mw": capacity_mw,
+        "filed_on": filed_on,
+        "decided_on": decided_on,
+        "outcome": outcome,
+        "vote_for": vote_for,
+        "vote_against": vote_against,
+        "vote_abstain": vote_abstain,
+        "notes": notes or None,
+        "citations": [citation],
+    }
+    return {key: value for key, value in payload.items() if value is not None}
+
+
+def _prompt_instrument(
+    *,
+    document: Any,
+    jurisdiction: str,
+    labelled_by: str,
+    citation_kind: str,
+    taken: set[str],
+) -> dict[str, Any]:
+    from auspice.pipeline.graph import labelling
+
+    heading("The instrument")
+    title = str(typer.prompt("Title")).strip()
+    instrument_kind = _prompt_choice("Instrument kind", [k.value for k in InstrumentKind])
+    body = _prompt_choice("Adopting body", [b.value for b in BodyKind])
+    adopted_on = _prompt_optional_date("Adopted on")
+    effective_on = _prompt_optional_date("Effective on")
+    expires_on = _prompt_optional_date("Expires on")
+    applies_to = _prompt_multi("Applies to use classes", [u.value for u in UseClass])
+    vote_for = _prompt_optional_int("Votes for")
+    vote_against = _prompt_optional_int("Votes against")
+
+    suggested = labelling.suggest_label_id(
+        jurisdiction=jurisdiction, subject=title, on=adopted_on, taken=sorted(taken)
+    )
+    label_id = str(typer.prompt("Label id", default=suggested)).strip()
+    if label_id in taken:
+        fail(f"label_id {label_id!r} is already used. Ids are never reused.")
+
+    citation = _prompt_citation(document=document, citation_kind=citation_kind, purpose="adoption")
+    notes = str(typer.prompt("Notes, or blank", default="", show_default=False)).strip()
+
+    payload: dict[str, Any] = {
+        "label_id": label_id,
+        "jurisdiction": jurisdiction,
+        "labelled_by": labelled_by,
+        "labelled_on": date.today(),
+        "kind": instrument_kind,
+        "body": body,
+        "title": title,
+        "adopted_on": adopted_on,
+        "effective_on": effective_on,
+        "expires_on": expires_on,
+        "applies_to_use_classes": applies_to,
+        "vote_for": vote_for,
+        "vote_against": vote_against,
+        "notes": notes or None,
+        "citations": [citation],
+    }
+    return {key: value for key, value in payload.items() if value is not None}
 
 
 @app.command("verify")

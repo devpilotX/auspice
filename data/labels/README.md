@@ -23,6 +23,49 @@ pending. Every row needs:
 - At least one citation: a URL, the document it points at, and a verbatim quote from that
   document that supports the outcome.
 
+## Per member votes
+
+Optional, and the highest value optional field in the format. When the minutes name who voted
+which way, record it:
+
+```yaml
+    vote_for: 5
+    vote_against: 3
+    member_votes:
+      - name: Supervisor Ellery
+        position: for
+        seat: Broad Run District
+        term_start: 2024-01-01
+        term_end: 2028-01-01
+      - name: Supervisor Nakamura
+        position: absent
+```
+
+`position` is one of `for`, `against`, `abstain`, `absent`, `recused`. Absent and recused are not
+votes and do not count toward the tally.
+
+Three features can populate from nothing else: `board_composition_score`, `swing_seat_count` and
+`turnover_since_last_comparable`. Without per member records they return unknown for every row no
+matter how many rows are labelled, because they are computed from the `vote` and `decision_maker`
+tables and an aggregate tally never reaches those tables.
+
+Two checks worth knowing about, because both refuse the row rather than warn:
+
+An aggregate tally and a per member list are two transcriptions of one vote. If they disagree, one
+of them is wrong, and loading both would put a contradiction into the training set.
+
+A member whose recorded term does not cover the decision date cannot have voted on it. Without that
+check the row would load, look complete, and quietly contribute nothing to the features, because the
+feature queries filter members by term.
+
+Section 8.9 forbids predicting how a named individual will vote. This records how they did vote, from
+the public record, and every feature built on it is an aggregate. That is the difference between
+reading minutes and profiling a person.
+
+Name spellings vary between documents. Record the name as the source spells it. The loader matches on
+the normalised name within the body and keeps every spelling it has seen, so two spellings of one
+supervisor stay one person with one record rather than becoming two with half each.
+
 ## The citation rule
 
 A row without a citation is rejected by the loader, not flagged. This is the same rule the

@@ -28,8 +28,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
+from threading import Lock
 from typing import Any
 
 from sqlalchemy import func, select, text, update
@@ -94,6 +96,14 @@ class VerificationReport:
     reason: str | None = None
     head: str | None = None
     daily_roots: dict[str, str] = field(default_factory=dict)
+    scope: str = "full"
+    """Which check produced this: ``full`` for the whole chain, ``head`` for the constant cost probe.
+
+    Carried on the report rather than left to the caller to remember, because the two answer different
+    questions and a shallow ok is not a full ok. A consumer that publishes an accuracy claim needs the
+    full walk; a liveness probe does not. Without this field the difference is invisible at the point it
+    matters, which is where someone would quote it.
+    """
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -103,6 +113,7 @@ class VerificationReport:
             "reason": self.reason,
             "head": self.head,
             "daily_roots": self.daily_roots,
+            "scope": self.scope,
         }
 
 
@@ -165,6 +176,221 @@ def publish(conn: Connection, *, prediction_id: int, payload: dict[str, Any]) ->
     )
 
 
+def _completeness_breach(conn: Connection, highest_present: int) -> tuple[int, str] | None:
+    """Detect entries deleted from the end of the chain. Constant cost, regardless of ledger size.
+
+    Everything the hash walk proves is that the entries present are internally consistent and correctly
+    chained, which is not the same as proving none are missing.
+
+    A deletion in the middle breaks the next entry's ``prev_hash``, so the walk already catches it. A
+    deletion at the tail is not caught: entries 1 to 3 of an original 1 to 4 form a shorter chain that
+    verifies perfectly. That is the deletion someone would actually make, because the most recent
+    predictions are the ones that have just been proved wrong.
+
+    The sequence generator is the check. Postgres only advances it, so it remembers the highest sequence
+    ever issued even after the row is gone. If it has issued more than the table holds, entries were
+    removed from the end.
+
+    This is evidence, not proof: someone with the right to run ``setval`` can rewind the counter, and
+    someone who can do that can do anything. Detecting the deletion is what matters, and the external
+    anchor in ``daily_root`` is what makes it undeniable.
+
+    Extracted from ``verify`` so that the cheap head check and the full walk apply the identical rule. A
+    second copy of this would be a second chance to get it wrong, and the cheap path exists precisely to
+    be run often, which makes it the one more likely to be trusted.
+
+    Returns ``(broken_at, reason)`` when entries are missing, or None when the tail is intact.
+    """
+    issued = (
+        conn.execute(text("SELECT last_value, is_called FROM ledger_entry_seq_seq"))
+        .mappings()
+        .first()
+    )
+    if issued is None or not issued["is_called"]:
+        return None
+
+    highest_issued = int(issued["last_value"])
+    if highest_present >= highest_issued:
+        return None
+
+    missing = highest_issued - highest_present
+    return (
+        highest_present + 1,
+        (
+            f"the ledger ends at sequence {highest_present}, but sequence {highest_issued} has been "
+            f"issued. {missing} entry or entries were deleted from the end of the chain."
+        ),
+    )
+
+
+def verify_head(conn: Connection) -> VerificationReport:
+    """A constant cost integrity check. What a health probe can afford to run on every request.
+
+    ``verify`` reads every row and rehashes every payload, so its cost grows with the ledger. That is
+    correct for publishing and for the accuracy page, and wrong for a liveness probe: the health endpoint
+    is unauthenticated and deliberately exempt from rate limiting, so an O(entries) body there means the
+    denial of service surface grows in exact proportion to the one metric the specification says must
+    never stall. The better the company does at publishing predictions, the cheaper it becomes to hurt.
+
+    What this catches: a tail deletion, by the same rule the full walk uses, and corruption of the most
+    recent entry, by rehashing it. Both are constant cost.
+
+    What it does not catch, stated plainly rather than left to be assumed: tampering in the middle of the
+    chain. Only the full walk finds that, and it still runs at startup through ``require_intact``, before
+    every publish, and behind the rate limiter on the accuracy page. This is a cheap smoke test, not a
+    replacement, and ``scope`` on the report says which one produced it.
+    """
+    report = VerificationReport(scope="head")
+
+    row = conn.execute(
+        select(
+            schema.ledger_entry.c.seq,
+            schema.ledger_entry.c.payload,
+            schema.ledger_entry.c.payload_hash,
+            schema.ledger_entry.c.prev_hash,
+            schema.ledger_entry.c.entry_hash,
+        )
+        .order_by(schema.ledger_entry.c.seq.desc())
+        .limit(1)
+    ).first()
+
+    if row is None:
+        # An empty ledger is intact. It is also the state a tail deletion of everything would leave, which
+        # is why the completeness check still runs against a highest_present of zero.
+        breach = _completeness_breach(conn, 0)
+        if breach is not None:
+            report.ok, report.broken_at, report.reason = False, breach[0], breach[1]
+        return report
+
+    report.entries = int(row.seq)
+    report.head = str(row.entry_hash)
+
+    if hash_payload(dict(row.payload)) != row.payload_hash:
+        report.ok = False
+        report.broken_at = int(row.seq)
+        report.reason = "the stored payload no longer hashes to its recorded payload hash"
+        return report
+
+    if link(str(row.prev_hash), str(row.payload_hash)) != row.entry_hash:
+        report.ok = False
+        report.broken_at = int(row.seq)
+        report.reason = "entry_hash is not the link of prev_hash and payload_hash"
+        return report
+
+    breach = _completeness_breach(conn, int(row.seq))
+    if breach is not None:
+        report.ok, report.broken_at, report.reason = False, breach[0], breach[1]
+
+    return report
+
+
+# ---------------------------------------------------------------------------
+# Verification caching
+# ---------------------------------------------------------------------------
+# `verify` pulls every payload into Python and re-serialises and rehashes each one. That is the right
+# thing to do and it is the expensive thing to do, and it sat behind `/v1/public/accuracy`, which is
+# public and unauthenticated. The cost grew with the ledger, so the denial of service surface grew with
+# the moat.
+#
+# **Why not a persisted checkpoint.** The obvious fix is a row recording "verified up to sequence N with
+# hash H" and walking only what follows. It is rejected here, deliberately. Anyone able to write that row
+# can make the verifier skip the region they tampered with, which converts the ledger's one hard property
+# into a property of whatever protects that row. For an append only record whose entire value is that it
+# cannot be quietly edited, adding a "trust me, this part is fine" marker is the wrong trade.
+#
+# **What this does instead.** It asks Postgres for a digest of the payloads and uses it as a cache key. If
+# no payload has changed, a previous full verification is still valid, and the answer is reused. The key
+# is derived from the live data on every call, so there is nothing to poison: tamper with any payload and
+# the key changes and the walk runs again.
+#
+# Honest about the cost. This is not O(1). It is one indexed scan with a per row digest computed inside
+# Postgres, instead of transferring every payload and rehashing it in Python. Per row md5 rather than
+# aggregating the payloads themselves, so the aggregate stays a few dozen bytes per entry rather than
+# kilobytes. The saving is a large constant factor, not a change of complexity, and the truly constant
+# cost check is `verify_head`, which is what the health endpoint uses.
+_PAYLOAD_DIGEST = text(
+    """
+    SELECT
+        count(*)                                                   AS entries,
+        coalesce(max(seq), 0)                                      AS head_seq,
+        md5(coalesce(string_agg(md5(payload::text), '' ORDER BY seq), '')) AS digest
+    FROM ledger_entry
+    """
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _CacheKey:
+    entries: int
+    head_seq: int
+    digest: str
+
+
+@dataclass(slots=True)
+class _VerificationCache:
+    """One cached full verification, guarded by a lock.
+
+    An object rather than module level globals, which mirrors how ``apps/api/app/ratelimit.py`` holds its
+    buckets, and which means a test can reset it without reaching for the ``global`` statement.
+    """
+
+    key: _CacheKey | None = None
+    report: VerificationReport | None = None
+    lock: Lock = field(default_factory=Lock)
+
+    def get(self, key: _CacheKey) -> VerificationReport | None:
+        with self.lock:
+            return self.report if self.key == key and self.report is not None else None
+
+    def put(self, key: _CacheKey, report: VerificationReport) -> None:
+        # Only a clean result is cached. Caching a failure would mean a repaired ledger kept reporting a
+        # break until the process restarted, and an operator fixing a chain needs to see the fix.
+        if not report.ok:
+            return
+        with self.lock:
+            self.key = key
+            self.report = report
+
+    def reset(self) -> None:
+        with self.lock:
+            self.key = None
+            self.report = None
+
+
+_cache = _VerificationCache()
+
+
+def _cache_key(conn: Connection) -> _CacheKey:
+    row = conn.execute(_PAYLOAD_DIGEST).mappings().one()
+    return _CacheKey(
+        entries=int(row["entries"]), head_seq=int(row["head_seq"]), digest=str(row["digest"])
+    )
+
+
+def reset_verification_cache() -> None:
+    """Drop the cache. For tests, and for anything that has reason to distrust process state."""
+    _cache.reset()
+
+
+def verify_cached(conn: Connection) -> VerificationReport:
+    """A full verification, reusing the previous result when nothing has changed.
+
+    Same guarantees as ``verify``: every payload rehashed, every link recomputed, tail deletion checked.
+    The only difference is that repeating the question costs one digest query rather than a full rehash.
+
+    The cache lives in the process and is empty at startup, so a restart always performs a real walk. That
+    is a feature rather than a limitation: process state is never load bearing for a claim about the record.
+    """
+    key = _cache_key(conn)
+    cached = _cache.get(key)
+    if cached is not None:
+        return cached
+
+    report = verify(conn)
+    _cache.put(key, report)
+    return report
+
+
 def verify(conn: Connection) -> VerificationReport:
     """Recompute the whole chain. Reports the first sequence number that does not check out.
 
@@ -217,40 +443,14 @@ def verify(conn: Connection) -> VerificationReport:
 
     report.head = expected_prev if rows else None
 
-    # Completeness. Everything above proves the entries present are internally consistent and correctly
-    # chained, which is not the same as proving none are missing.
-    #
-    # A deletion in the middle breaks the next entry's prev_hash, so it is already caught. A deletion at
-    # the tail is not: entries 1 to 3 of an original 1 to 4 form a shorter chain that verifies perfectly.
-    # That is the deletion someone would actually make, because the most recent predictions are the ones
-    # that have just been proved wrong.
-    #
-    # The sequence generator is the check. Postgres only advances it, so it remembers the highest sequence
-    # ever issued even after the row is gone. If it has issued more than the table holds, entries were
-    # removed from the end.
-    #
-    # This is evidence, not proof: someone with the right to run setval can rewind the counter, and
-    # someone who can do that can do anything. Detecting the deletion is what matters, and the external
-    # anchor in ``daily_root`` is what makes it undeniable.
-    issued = (
-        conn.execute(text("SELECT last_value, is_called FROM ledger_entry_seq_seq"))
-        .mappings()
-        .first()
-    )
-
-    if issued is not None and issued["is_called"]:
-        highest_issued = int(issued["last_value"])
-        highest_present = int(rows[-1].seq) if rows else 0
-        if highest_present < highest_issued:
-            report.ok = False
-            report.broken_at = highest_present + 1
-            missing = highest_issued - highest_present
-            report.reason = (
-                f"the ledger holds {report.entries} entries ending at sequence {highest_present}, but "
-                f"sequence {highest_issued} has been issued. {missing} entry or entries were deleted "
-                "from the end of the chain."
-            )
-            return report
+    # Completeness. See _completeness_breach for why the hash walk above is not sufficient on its own and
+    # why the sequence generator is the check. Shared with verify_head so the two cannot diverge.
+    breach = _completeness_breach(conn, int(rows[-1].seq) if rows else 0)
+    if breach is not None:
+        report.ok = False
+        report.broken_at = breach[0]
+        report.reason = breach[1]
+        return report
 
     return report
 
@@ -371,60 +571,85 @@ def grade(
     return grading
 
 
-def public_record(conn: Connection) -> dict[str, Any]:
+_ACCURACY_TOTALS = text(
+    """
+    SELECT
+        count(*)                                                        AS published,
+        count(*) FILTER (WHERE resolved_outcome IS NOT NULL)             AS resolved,
+        count(*) FILTER (WHERE grading ? 'brier_contribution')           AS answered,
+        avg((grading ->> 'brier_contribution')::numeric)
+            FILTER (WHERE grading ? 'brier_contribution')                AS brier
+    FROM ledger_entry
+    """
+)
+
+# A miss is a graded, answered prediction whose direction was wrong. `direction_correct` absent means the
+# entry was not scored for direction, which is not a miss, so it coalesces to true. That default matches
+# the Python this replaced; getting it backwards would invent misses out of unscored entries and publish
+# them, which is a worse error than hiding one.
+_ACCURACY_MISSES = text(
+    """
+    SELECT seq, payload, resolved_outcome, miss_note
+    FROM ledger_entry
+    WHERE grading ? 'brier_contribution'
+      AND coalesce((grading ->> 'direction_correct')::boolean, true) IS FALSE
+    ORDER BY seq
+    """
+)
+
+
+def public_record(conn: Connection, *, include_entries: bool = False) -> dict[str, Any]:
     """Everything the public accuracy page shows. No login, no filtering, no omissions.
 
     Section 5.3: the single most important page on the website is public and free, and it is
     simultaneously the product proof, the marketing engine and the moat.
+
+    The counts are computed by Postgres rather than by loading every row and folding over it in Python.
+    The previous version selected every entry with its full payload in order to count four things and
+    average one, on an unauthenticated endpoint, so memory grew with the ledger even though the response
+    did not: `entries` was built and then not returned by the API at all. Nothing read it, so it is now
+    opt in through ``include_entries``, and the endpoint no longer asks for it.
+
+    Misses are still fetched in full and deliberately so. Section 8.5 makes the misses log public, it is
+    bounded by how often the model is wrong rather than by how much it has published, and truncating the
+    list of things we got wrong is the one economy this product cannot make.
     """
-    report = verify(conn)
+    report = verify_cached(conn)
 
-    rows = conn.execute(
-        select(
-            schema.ledger_entry.c.seq,
-            schema.ledger_entry.c.published_at,
-            schema.ledger_entry.c.payload,
-            schema.ledger_entry.c.payload_hash,
-            schema.ledger_entry.c.entry_hash,
-            schema.ledger_entry.c.resolved_outcome,
-            schema.ledger_entry.c.resolved_on,
-            schema.ledger_entry.c.grading,
-            schema.ledger_entry.c.miss_note,
-        ).order_by(schema.ledger_entry.c.seq)
-    ).all()
+    totals = conn.execute(_ACCURACY_TOTALS).mappings().one()
+    published = int(totals["published"])
+    resolved = int(totals["resolved"])
+    answered = int(totals["answered"])
+    brier = round(float(totals["brier"]), 5) if totals["brier"] is not None else None
 
-    resolved = [r for r in rows if r.resolved_outcome is not None]
-    answered = [
-        r for r in resolved if r.grading and r.grading.get("brier_contribution") is not None
+    misses = [
+        {
+            "seq": int(row["seq"]),
+            "public_id": row["payload"].get("public_id"),
+            "jurisdiction": row["payload"].get("jurisdiction"),
+            "predicted": row["payload"].get("approval_probability"),
+            "outcome": row["resolved_outcome"],
+            "note": row["miss_note"],
+        }
+        for row in conn.execute(_ACCURACY_MISSES).mappings().all()
     ]
 
-    brier = (
-        round(sum(float(r.grading["brier_contribution"]) for r in answered) / len(answered), 5)
-        if answered
-        else None
-    )
-
-    return {
+    record: dict[str, Any] = {
         "chain": report.as_dict(),
-        "published": len(rows),
-        "resolved": len(resolved),
-        "pending": len(rows) - len(resolved),
-        "answered": len(answered),
-        "abstained": len(resolved) - len(answered),
+        "published": published,
+        "resolved": resolved,
+        "pending": published - resolved,
+        "answered": answered,
+        "abstained": resolved - answered,
         "brier_score": brier,
-        "misses": [
-            {
-                "seq": int(r.seq),
-                "public_id": r.payload.get("public_id"),
-                "jurisdiction": r.payload.get("jurisdiction"),
-                "predicted": r.payload.get("approval_probability"),
-                "outcome": r.resolved_outcome,
-                "note": r.miss_note,
-            }
-            for r in answered
-            if r.grading and not r.grading.get("direction_correct", True)
-        ],
-        "entries": [
+        "misses": misses,
+    }
+
+    if include_entries:
+        # Only the CLI and an operator inspecting the chain by hand have a reason to want every entry, and
+        # neither is serving a public request. Kept behind a flag rather than deleted, because it is the
+        # shape an export or an audit script wants.
+        record["entries"] = [
             {
                 "seq": int(r.seq),
                 "published_at": r.published_at.isoformat(),
@@ -436,18 +661,39 @@ def public_record(conn: Connection) -> dict[str, Any]:
                 "grading": r.grading,
                 "miss_note": r.miss_note,
             }
-            for r in rows
-        ],
-    }
+            for r in conn.execute(
+                select(
+                    schema.ledger_entry.c.seq,
+                    schema.ledger_entry.c.published_at,
+                    schema.ledger_entry.c.payload,
+                    schema.ledger_entry.c.payload_hash,
+                    schema.ledger_entry.c.entry_hash,
+                    schema.ledger_entry.c.resolved_outcome,
+                    schema.ledger_entry.c.resolved_on,
+                    schema.ledger_entry.c.grading,
+                    schema.ledger_entry.c.miss_note,
+                ).order_by(schema.ledger_entry.c.seq)
+            ).all()
+        ]
+
+    return record
 
 
-def export_jsonl(conn: Connection) -> str:
-    """The ledger as newline delimited JSON, for anyone who wants to verify it themselves.
+def iter_jsonl(conn: Connection, *, after_seq: int = 0, limit: int | None = None) -> Iterator[str]:
+    """The ledger as newline delimited JSON, one line at a time.
 
-    Published alongside the accuracy page. A record that can only be checked through our own interface
-    is not a public record.
+    ``export_jsonl`` builds the whole export as a single string, which is fine for the CLI and wrong for a
+    public endpoint: the record is meant to be complete, so the response cannot be truncated, which means
+    the only way to keep memory bounded is to stream it. At a few hundred entries the difference is
+    nothing. The point of the ledger is that it grows forever.
+
+    ``stream_results`` asks the driver for a server side cursor so rows arrive in batches rather than all
+    at once. Without it this function would allocate exactly what it exists to avoid.
+
+    ``after_seq`` and ``limit`` are for a consumer fetching in slices, not for the publisher deciding how
+    much of its record to show. The endpoint defaults to everything.
     """
-    rows = conn.execute(
+    query = (
         select(
             schema.ledger_entry.c.seq,
             schema.ledger_entry.c.published_at,
@@ -457,25 +703,44 @@ def export_jsonl(conn: Connection) -> str:
             schema.ledger_entry.c.entry_hash,
             schema.ledger_entry.c.resolved_outcome,
             schema.ledger_entry.c.resolved_on,
-        ).order_by(schema.ledger_entry.c.seq)
-    ).all()
-
-    lines = [
-        canonical_json(
-            {
-                "seq": int(r.seq),
-                "published_at": r.published_at.isoformat(),
-                "payload": dict(r.payload),
-                "payload_hash": r.payload_hash,
-                "prev_hash": r.prev_hash,
-                "entry_hash": r.entry_hash,
-                "resolved_outcome": r.resolved_outcome,
-                "resolved_on": r.resolved_on.isoformat() if r.resolved_on else None,
-            }
         )
-        for r in rows
-    ]
-    return "\n".join(lines) + ("\n" if lines else "")
+        .where(schema.ledger_entry.c.seq > after_seq)
+        .order_by(schema.ledger_entry.c.seq)
+    )
+    if limit is not None:
+        query = query.limit(limit)
+
+    result = conn.execution_options(stream_results=True, max_row_buffer=500).execute(query)
+    for row in result:
+        yield (
+            canonical_json(
+                {
+                    "seq": int(row.seq),
+                    "published_at": row.published_at.isoformat(),
+                    "payload": dict(row.payload),
+                    "payload_hash": row.payload_hash,
+                    "prev_hash": row.prev_hash,
+                    "entry_hash": row.entry_hash,
+                    "resolved_outcome": row.resolved_outcome,
+                    "resolved_on": row.resolved_on.isoformat() if row.resolved_on else None,
+                }
+            )
+            + "\n"
+        )
+
+
+def export_jsonl(conn: Connection) -> str:
+    """The whole ledger as one newline delimited JSON string.
+
+    Published alongside the accuracy page. A record that can only be checked through our own interface is
+    not a public record.
+
+    Delegates to ``iter_jsonl`` rather than repeating the serialisation. Two copies of the export format
+    would eventually disagree by a field or a key order, and a consumer who verified the hashes against one
+    of them would find the other did not check out. Callers that must not hold the whole record in memory
+    should use ``iter_jsonl`` directly; this is for the CLI and for tests.
+    """
+    return "".join(iter_jsonl(conn))
 
 
 def unresolved_older_than(conn: Connection, *, days: int) -> list[dict[str, Any]]:

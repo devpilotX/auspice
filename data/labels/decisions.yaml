@@ -20,7 +20,7 @@ compiled_on: 2026-08-27
 decisions:
   - label_id: pwc-digital-gateway-rezoning-2023
     jurisdiction: us-va-prince-william
-    labelled_by: Auspice
+    labelled_by: Permission Bureau
     labelled_on: 2026-08-27
     case_number: null
     body: board_of_supervisors
@@ -70,7 +70,7 @@ decisions:
 instruments:
   - label_id: loudoun-zoam-2025-0001-by-right-ended
     jurisdiction: us-va-loudoun
-    labelled_by: Auspice
+    labelled_by: Permission Bureau
     labelled_on: 2026-08-27
     kind: zoning_ordinance
     body: board_of_supervisors
@@ -108,7 +108,7 @@ instruments:
 
   - label_id: loudoun-grandfathering-resolution-2025
     jurisdiction: us-va-loudoun
-    labelled_by: Auspice
+    labelled_by: Permission Bureau
     labelled_on: 2026-08-27
     kind: resolution
     body: board_of_supervisors
@@ -140,7 +140,7 @@ instruments:
 
   - label_id: loudoun-phase2-project-plan-2025
     jurisdiction: us-va-loudoun
-    labelled_by: Auspice
+    labelled_by: Permission Bureau
     labelled_on: 2026-08-27
     kind: resolution
     body: board_of_supervisors
@@ -165,7 +165,7 @@ instruments:
 
   - label_id: boone-data-center-moratorium-2026
     jurisdiction: us-in-boone
-    labelled_by: Auspice
+    labelled_by: Permission Bureau
     labelled_on: 2026-08-27
     kind: moratorium
     body: county_commission
@@ -206,7 +206,7 @@ instruments:
 
   - label_id: sarasota-hyperscale-moratorium-2026
     jurisdiction: us-fl-sarasota
-    labelled_by: Auspice
+    labelled_by: Permission Bureau
     labelled_on: 2026-08-27
     kind: moratorium
     body: county_commission
@@ -240,7 +240,7 @@ instruments:
 
   - label_id: newton-data-center-moratorium-2026
     jurisdiction: us-ga-newton
-    labelled_by: Auspice
+    labelled_by: Permission Bureau
     labelled_on: 2026-08-27
     kind: moratorium
     body: county_commission
@@ -264,13 +264,14 @@ instruments:
         kind: secondary
       - url: https://www.newtoncountyga.gov/DocumentCenter/View/7830/Resolution-R-040726b
         document_title: "Newton County Resolution R-040726b"
-        quote: "Newton County commissioners approve 2 moratoriums for data centers, convenience stores"
-        retrieved_on: 2026-08-27
-        kind: secondary
+        quote: "SO RESOLVED this 7th day of April, 2026, the public's health, safety, and welfare demanding it."
+        page: 2
+        retrieved_on: 2026-08-31
+        kind: primary
 
   - label_id: linn-data-center-moratorium-2026
     jurisdiction: us-ia-linn
-    labelled_by: Auspice
+    labelled_by: Permission Bureau
     labelled_on: 2026-08-27
     kind: moratorium
     body: board_of_supervisors
@@ -303,7 +304,7 @@ instruments:
 
   - label_id: cheyenne-data-center-moratorium-rejected-2026
     jurisdiction: us-wy-laramie
-    labelled_by: Auspice
+    labelled_by: Permission Bureau
     labelled_on: 2026-08-27
     kind: moratorium
     body: city_council

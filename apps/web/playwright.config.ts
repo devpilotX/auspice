@@ -19,6 +19,31 @@ import { defineConfig, devices } from "@playwright/test";
   layout engine and a regression in one shows up in the other.
 */
 
+/*
+  The unit project launches no browser and loads no page, so it must not start a server.
+
+  Playwright has no per project webServer, so the decision has to be made here, before the config is
+  returned. CI previously set PLAYWRIGHT_BASE_URL to a URL nothing was serving, purely to make the
+  webServer block below evaluate to undefined. That worked and it was fragile: the day a unit test calls
+  page.goto it would quietly try to reach a dead port instead of failing with a clear reason.
+
+  This reads the requested projects from the command line instead. Running only --project=unit starts
+  nothing. Running anything else, or running everything, starts the server as before.
+*/
+const requestedProjects: string[] = process.argv.flatMap((argument, index) => {
+  if (argument === "--project") {
+    const next = process.argv[index + 1];
+    return next ? [next] : [];
+  }
+  if (argument.startsWith("--project=")) {
+    return [argument.slice("--project=".length)];
+  }
+  return [];
+});
+
+const browserProjectRequested =
+  requestedProjects.length === 0 || requestedProjects.some((name) => name !== "unit");
+
 export default defineConfig({
   testDir: "./tests",
   fullyParallel: true,
@@ -69,12 +94,13 @@ export default defineConfig({
     },
   ],
 
-  webServer: process.env.PLAYWRIGHT_BASE_URL
-    ? undefined
-    : {
-        command: "npm run start",
-        url: "http://127.0.0.1:3000",
-        reuseExistingServer: !process.env.CI,
-        timeout: 120_000,
-      },
+  webServer:
+    process.env.PLAYWRIGHT_BASE_URL || !browserProjectRequested
+      ? undefined
+      : {
+          command: "npm run start",
+          url: "http://127.0.0.1:3000",
+          reuseExistingServer: !process.env.CI,
+          timeout: 120_000,
+        },
 });

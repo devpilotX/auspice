@@ -15,6 +15,8 @@ the right length are a tile.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Connection, text
@@ -118,11 +120,72 @@ MARICOPA = tile_for(-112.0, 33.4, 8)
 OPEN_PACIFIC = tile_for(-140.0, 10.0, 7)
 
 
-@pytest.fixture(scope="module")
-def client() -> TestClient:
+# Boxes rather than the real county outlines, and that keeps what these tests are for. The stated intent
+# is to catch a projection mistake, a swapped x and y, or a boundary loaded with reversed coordinates, and
+# every one of those moves a box out of frame exactly as it would move a county. What boxes buy is that the
+# fixture creates its own geography instead of depending on a registry someone loaded earlier.
+#
+# A quarter of a degree each way, comfortably inside a zoom 7 tile, which spans about 2.8 degrees.
+_SEEDED = (
+    ("us-va-loudoun", "Loudoun County", "VA", "dillons_rule", -77.5, 39.0),
+    ("us-az-maricopa", "Maricopa County", "AZ", "dillons_rule", -112.0, 33.4),
+)
+
+_INSERT_JURISDICTION = text(
+    """
+    INSERT INTO jurisdiction
+        (slug, name, kind, region, legal_framework, data_depth, discretion_index, boundary)
+    VALUES
+        (:slug, :name, 'county', :region, :framework, 3, 0.500,
+         ST_Multi(ST_MakeEnvelope(:x1, :y1, :x2, :y2, 4326))::geometry(MultiPolygon, 4326))
+    """
+)
+
+
+@pytest.fixture
+def client(clean_db: Connection) -> Iterator[TestClient]:
+    """A client that reads the same transaction this fixture writes to, with its own geography.
+
+    Two problems are fixed here and the second one was silent.
+
+    The fixture used to seed nothing and rely on whatever boundaries happened to be in the database. That
+    is not a test of the tile query, it is a test of somebody's working copy.
+
+    Worse, ``app.deps.get_connection`` opens its own connection through ``transaction()``, which uses the
+    non test engine. Locally ``AUSPICE_DATABASE_URL`` points at ``auspice`` and
+    ``AUSPICE_TEST_DATABASE_URL`` at ``auspice_test``, so the endpoint read a different database from the
+    one the fixtures write to. These tests passed because ``auspice`` had twelve counties loaded by hand.
+    Measured on 2026-08-31: ``auspice`` held 12 jurisdictions with boundaries and ``auspice_test`` held 0,
+    and CI points both variables at ``auspice_test``, so the assertions here could not have been satisfied
+    there. Green locally, unsatisfiable in CI, and testing production data in both readings.
+    """
+    from app.deps import get_connection
     from app.main import app
 
-    return TestClient(app)
+    for slug, name, region, framework, longitude, latitude in _SEEDED:
+        clean_db.execute(
+            _INSERT_JURISDICTION.bindparams(
+                slug=slug,
+                name=name,
+                region=region,
+                framework=framework,
+                x1=longitude - 0.25,
+                y1=latitude - 0.25,
+                x2=longitude + 0.25,
+                y2=latitude + 0.25,
+            )
+        )
+
+    # A generator function, not a lambda returning an iterator: FastAPI injects the yielded value for the
+    # former and the iterator itself for the latter.
+    def _use_the_test_connection() -> Iterator[Connection]:
+        yield clean_db
+
+    app.dependency_overrides[get_connection] = _use_the_test_connection
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.pop(get_connection, None)
 
 
 class TestTheTileIsARealTile:

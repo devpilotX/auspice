@@ -78,7 +78,7 @@ _JURISDICTION_TILE = text(
     },
     response_class=Response,
 )
-async def jurisdiction_tile(
+def jurisdiction_tile(
     conn: Db,
     z: Annotated[int, Path(ge=MIN_ZOOM, le=MAX_ZOOM)],
     x: Annotated[int, Path(ge=0)],

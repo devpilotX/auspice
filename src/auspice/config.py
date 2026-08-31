@@ -110,13 +110,77 @@ class Settings(BaseSettings):
     ledger_path: Path = Path("data/ledger")
     ledger_anchor_url: str = ""
 
+    # -- Observability -----------------------------------------------------
+    # Both are empty by default and both are fail closed rather than fail open.
+    #
+    # No DSN means no error tracker is started and no network call leaves the process. A service that
+    # reads nothing but public records should not acquire a third party data processor because a
+    # default was left on.
+    #
+    # No metrics token means the /metrics route is not registered at all, rather than registered and
+    # answering 401. An unauthenticated metrics endpoint publishes request volumes, error rates and
+    # model identity, and a route that does not exist cannot be probed.
+    sentry_dsn: str = ""
+    sentry_traces_sample_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    metrics_token: str = ""
+
+    # -- Alert delivery ----------------------------------------------------
+    # The default is `log`, which needs no credentials. That is deliberate: an unconfigured
+    # deployment that writes every alert to the structured log is observably doing the right thing
+    # and can be checked by reading the log. The failure to avoid is a deployment that looks healthy
+    # because nothing errored while nothing was sent.
+    #
+    # Setting the channel to webhook or smtp without its required values raises rather than falling
+    # back to the log, because an operator who configured mail wants to hear that it is broken now.
+    alert_channel: Literal["log", "webhook", "smtp"] = "log"
+    alert_max_delivery_attempts: int = Field(default=5, ge=1, le=50)
+    alert_webhook_url: str = ""
+    alert_smtp_host: str = ""
+    alert_smtp_port: int = 587
+    alert_smtp_username: str = ""
+    alert_smtp_password: str = ""
+    alert_smtp_starttls: bool = True
+    alert_sender: str = ""
+    alert_fallback_recipient: str = ""
+    """Where a mail alert goes when the subscriber is not an email address.
+
+    `watch.subscriber` is documented in the schema as an API key label until billing exists, so it is
+    not reliably an address. With this set, such an alert reaches an operator. Without it, the send
+    fails loudly and the alert stays in the queue. Neither option silently drops it.
+    """
+
     # -- Paths -------------------------------------------------------------
     registry_path: Path = Path("data/registry")
     labels_path: Path = Path("data/labels")
     artifacts_path: Path = Path("artifacts")
+    backup_path: Path = Path("var/backups")
+    """Where `auspice ops backup` writes dumps and manifests.
+
+    Under `var/` because that directory is already ignored and holds the local database cluster, so a
+    dump cannot be committed by accident. In a real deployment this points at a mount that is not the
+    same disk as the database, and `docs/OPERATIONS.md` says so.
+    """
+
+    backup_admin_url: PostgresDsn | None = None
+    """A connection used only to create, restore into and drop the scratch database during
+    `auspice ops verify`. Falls back to `database_url` when unset.
+
+    This exists because restoring is an administrative operation and the application role is not an
+    administrator. Measured on the local cluster: the `auspice` role cannot run
+    `CREATE EXTENSION postgis`, which every dump of this schema contains, so a restore attempted with
+    the application's own credentials fails with a permission error. That is a real finding rather than
+    a local quirk: a backup that the credentials on hand cannot restore is a file, not a backup.
+
+    Nothing else in the system uses this. The serving process and the pipeline never see it.
+    """
 
     @field_validator(
-        "raw_local_root", "ledger_path", "registry_path", "labels_path", "artifacts_path"
+        "raw_local_root",
+        "ledger_path",
+        "registry_path",
+        "labels_path",
+        "artifacts_path",
+        "backup_path",
     )
     @classmethod
     def _absolutise(cls, value: Path) -> Path:

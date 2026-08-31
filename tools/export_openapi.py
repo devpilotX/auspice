@@ -36,9 +36,14 @@ def main() -> int:
     destination: Path = arguments.out
     destination.parent.mkdir(parents=True, exist_ok=True)
     rendered = json.dumps(document, indent=2, sort_keys=True) + "\n"
-
     previous = destination.read_text(encoding="utf-8") if destination.exists() else None
-    destination.write_text(rendered, encoding="utf-8")
+    # newline="" so "\n" is written as one byte rather than translated to the platform's line ending.
+    # Without it this file is CRLF on Windows and LF everywhere else, while .gitattributes stores the blob
+    # as LF, so a fresh clone checks out LF and a regeneration produces CRLF. `npm run types:check` then
+    # compares the two and reports the document as stale when only the newlines differ. That is exactly
+    # what happened: the check passed on the machine that wrote the file and failed on a clean clone, which
+    # is the worst shape a check can have. Found by the IRONCLAD Gate 6 run.
+    destination.write_text(rendered, encoding="utf-8", newline="\n")
 
     paths = len(document.get("paths", {}))
     schemas = len(document.get("components", {}).get("schemas", {}))

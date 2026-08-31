@@ -18,6 +18,196 @@ from auspice.domain import Outcome
 app = typer.Typer(no_args_is_help=True, help="The hash committed public prediction ledger.")
 
 
+@app.command("anchor")
+def anchor() -> None:
+    """Submit the current chain head to the configured external timestamping service.
+
+    The hash chain proves internal consistency: no entry can be altered without breaking every hash
+    after it. It cannot prove the chain existed before today, because we hold all of it and could
+    rebuild and rehash it. An anchor puts the head in a third party's hands at a known time, which is
+    what makes that impossible.
+
+    The chain is verified before anything is submitted. Anchoring a broken chain would put it beyond
+    dispute, which is the opposite of the point.
+    """
+    from auspice import ledger
+    from auspice.errors import LedgerTamperError, StageUnavailableError
+
+    heading("Anchoring the ledger head")
+    try:
+        with transaction() as conn:
+            receipt = ledger.anchor_head(conn)
+    except StageUnavailableError as exc:
+        fail(str(exc))
+    except LedgerTamperError as exc:
+        fail(str(exc))
+    except ledger.AnchorError as exc:
+        fail(str(exc))
+
+    render_table(
+        [
+            {"field": "service", "value": receipt.service},
+            {"field": "digest submitted", "value": receipt.submitted_digest},
+            {"field": "receipt sha256", "value": receipt.receipt_sha256},
+            {"field": "receipt bytes", "value": receipt.receipt_bytes},
+            {"field": "received at", "value": receipt.received_at},
+        ],
+        columns=("field", "value"),
+    )
+    console.print()
+    ok("the head is anchored and the receipt is recorded against that entry")
+    note(
+        "What this proves: the digest was submitted and a receipt came back. Verifying the receipt "
+        "cryptographically needs the standard client for that service, and every input to that check "
+        "is in the published export."
+    )
+
+
+@app.command("anchors")
+def anchors() -> None:
+    """What is anchored externally and what is not.
+
+    An unanchored ledger is an honest state, and the accuracy page says so rather than omitting the
+    subject. This is the same information for an operator.
+    """
+    from auspice import ledger
+
+    heading("External anchoring")
+    with transaction() as conn:
+        status = ledger.anchor_status(conn)
+
+    render_table(
+        [{"field": key, "value": value} for key, value in status.as_dict().items()],
+        columns=("field", "value"),
+    )
+    console.print()
+
+    if status.anchors:
+        render_table(
+            [
+                {
+                    "seq": a["seq"],
+                    "anchored at": (a["anchored_at"] or "")[:19],
+                    "digest matches": "yes" if a["digest_matches_entry"] else "NO",
+                    "receipt": (a["receipt_sha256"] or "")[:16],
+                }
+                for a in status.anchors
+            ],
+            numeric=("seq",),
+            title="Anchors held, newest first",
+        )
+        console.print()
+        broken = [a for a in status.anchors if not a["digest_matches_entry"]]
+        if broken:
+            fail(
+                f"{len(broken)} stored anchor reference(s) do not describe the entry they sit on. "
+                "That is a defect in how they were written, not evidence of tampering, and it means "
+                "those receipts prove nothing about those entries."
+            )
+
+    console.print(f"  {status.statement()}")
+    if not status.configured:
+        console.print()
+        note("Set AUSPICE_LEDGER_ANCHOR_URL to anchor. Until then the guarantee is internal only.")
+
+
+@app.command("reconcile")
+def reconcile(
+    dry_run: Annotated[
+        bool, typer.Option(help="Show what would be graded without grading it")
+    ] = False,
+    limit: Annotated[int, typer.Option(help="Grade at most this many, 0 for all")] = 0,
+) -> None:
+    """Grade every published prediction whose application has since reached a terminal outcome.
+
+    This is what makes the ledger accrue. Without it an outcome can land in the graph while the prediction
+    made about it sits unresolved forever, so the accuracy page keeps saying nothing has resolved when the
+    answer is already in the database. That is worse than an empty record: an empty record is honest about
+    being empty, and one that stays empty while outcomes arrive has quietly stopped working.
+    """
+    from auspice import ledger
+
+    heading("Reconciling the ledger against the graph")
+    with transaction() as conn:
+        report = ledger.reconcile(conn, dry_run=dry_run, limit=limit or None)
+
+    if report.rows:
+        render_table(
+            [
+                {
+                    "seq": row["seq"],
+                    "public id": row["public_id"],
+                    "jurisdiction": row["jurisdiction"],
+                    "outcome": row["outcome"],
+                    "predicted": row["predicted"] if row["predicted"] is not None else ABSENT,
+                    "miss": "yes" if row["miss"] else "",
+                }
+                for row in report.rows
+            ],
+            numeric=("seq", "predicted"),
+        )
+        console.print()
+
+    render_table(
+        [{"metric": key, "value": value} for key, value in report.as_dict().items()],
+        columns=("metric", "value"),
+    )
+
+    if report.failures:
+        console.print()
+        render_table(
+            [{"seq": f["seq"], "reason": f["reason"][:90]} for f in report.failures],
+            numeric=("seq",),
+            title="Skipped, each with its reason",
+        )
+
+    console.print()
+    if dry_run:
+        note(f"{report.considered} entr(ies) would be graded. Nothing was written.")
+        return
+    if report.graded == 0:
+        ok("nothing to grade. Every published prediction is either resolved or still pending.")
+        return
+    ok(f"{report.graded} graded, {report.misses} of them recorded as misses")
+    if report.misses:
+        note(
+            "A miss carries a factual note naming the numbers. The explanation of what the model missed "
+            "is written by a person, and section 8.5 publishes it either way."
+        )
+
+
+@app.command("accrual")
+def accrual() -> None:
+    """Whether the ledger is accruing, which is a different question from whether it is intact.
+
+    ``gradeable_now`` above zero means an outcome is sitting in the graph unrecorded on the public record,
+    so the accuracy page is understating what is already known.
+    """
+    from auspice import ledger
+
+    heading("Ledger accrual")
+    with transaction() as conn:
+        status = ledger.accrual_status(conn)
+
+    render_table(
+        [
+            {"metric": key, "value": value if value is not None else ABSENT}
+            for key, value in status.items()
+        ],
+        columns=("metric", "value"),
+    )
+    console.print()
+    if status["gradeable_now"]:
+        note(
+            f"{status['gradeable_now']} published prediction(s) can be graded now. "
+            "Run `auspice ledger reconcile`."
+        )
+    elif status["published"] == 0:
+        note("nothing has been published yet. `auspice score site --publish` starts the record.")
+    else:
+        ok("every resolved outcome in the graph is recorded on the public record")
+
+
 @app.command("verify")
 def verify() -> None:
     """Recompute the whole hash chain and report the first sequence that does not check out."""

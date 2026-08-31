@@ -26,25 +26,25 @@ export const DOCUMENTS = {
     file: "METHODOLOGY.md",
     label: "methodology",
     description:
-      "How Auspice produces a probability, what it measures itself against, and when it refuses to answer.",
+      "How Permission Bureau produces a probability, what it measures itself against, and when it refuses to answer.",
   },
   neutrality: {
     file: "NEUTRALITY.md",
     label: "neutrality",
     description:
-      "Who Auspice works for, what it will not do, and how a rating bureau stays usable by both sides of a deal.",
+      "Who Permission Bureau works for, what it will not do, and how a rating bureau stays usable by both sides of a deal.",
   },
   "data-sources": {
     file: "DATA_SOURCES.md",
     label: "data sources",
     description:
-      "Every source Auspice reads, how often it is fetched, and what happens when a source goes dark.",
+      "Every source Permission Bureau reads, how often it is fetched, and what happens when a source goes dark.",
   },
   terms: {
     file: "TERMS.md",
     label: "terms of use",
     description:
-      "What Auspice sells, what a probability does and does not mean, and what it will not stand behind.",
+      "What Permission Bureau sells, what a probability does and does not mean, and what it will not stand behind.",
   },
   privacy: {
     file: "PRIVACY.md",

@@ -1,0 +1,120 @@
+# The API image. Referenced by infra/docker-compose.yml, which named this file before it existed, so
+# `docker compose up` failed on a missing Dockerfile and nothing in this repository could be deployed.
+#
+# Four decisions here are load bearing rather than boilerplate.
+#
+# **The source tree is kept, not discarded.** `src/auspice/config.py` computes
+# `REPO_ROOT = Path(__file__).resolve().parents[2]`, which is the repository root when the module lives at
+# `src/auspice/config.py` and is a directory inside the interpreter's library when the module lives in
+# site-packages. Every default path hangs off it: the ledger, the registry, the labels, the artifacts
+# directory, and the `.env` file the settings object reads. An image that installed the wheel and threw
+# the tree away would resolve all of them to nonsense, and the failure would be a confusing FileNotFound
+# rather than an obvious packaging error. So the tree is copied to /app and PYTHONPATH puts /app/src ahead
+# of site-packages, which keeps REPO_ROOT equal to /app.
+#
+# **One uvicorn worker, and this is not a performance oversight.** `apps/api/app/ratelimit.py` holds its
+# token buckets in the process. Two workers means two sets of buckets and twice the advertised allowance,
+# which is worse than no limit because the published number would be wrong. Scaling past one worker needs
+# the limit moved to the reverse proxy or a shared store first. docs/OPERATIONS.md says the same thing.
+#
+# **Chromium is installed, because the memo is the product.** The PDF committee memo is revenue line one.
+# It renders through headless Chromium, so the browser has to be in the image rather than assumed on the
+# host. PLAYWRIGHT_BROWSERS_PATH points at a shared location so the non-root runtime user can read a
+# browser that root downloaded.
+#
+# **Non-root at runtime.** The process reads a database and writes artefacts. It has no reason to be root,
+# and a container that runs as root turns a code execution bug into a host problem.
+
+# ---------------------------------------------------------------------------
+# Builder: resolve and install dependencies into a self contained virtualenv.
+# ---------------------------------------------------------------------------
+FROM python:3.13-slim AS builder
+
+# uv is copied from its own published image rather than installed with pip, which avoids resolving pip's
+# own dependency tree inside a stage whose only job is to resolve someone else's.
+COPY --from=ghcr.io/astral-sh/uv:0.12.6 /uv /usr/local/bin/uv
+
+ENV UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PROJECT_ENVIRONMENT=/app/.venv \
+    UV_FROZEN=1
+
+WORKDIR /app
+
+# The manifest, the lock and the readme first, so a dependency layer is only rebuilt when dependencies
+# change. pyproject.toml declares readme = "README.md" and hatchling reads it during the build, so its
+# absence fails the install rather than being ignored.
+COPY pyproject.toml uv.lock README.md ./
+COPY src/ ./src/
+
+# --frozen refuses to update the lockfile. A deploy that silently resolves a different version than the
+# one tested is a deploy of something that was never tested. --no-dev leaves ruff, mypy and pytest out.
+#
+# observability carries sentry-sdk. It is installed even though AUSPICE_SENTRY_DSN is empty by default,
+# because the alternative is a container where setting the DSN logs "configured but not installed" and
+# reports nothing. A dependency present and unused costs a few megabytes; error reporting that silently
+# does not work costs an incident.
+RUN uv sync --frozen --no-dev --extra api --extra memo --extra observability
+
+# ---------------------------------------------------------------------------
+# Runtime.
+# ---------------------------------------------------------------------------
+FROM python:3.13-slim AS runtime
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUTF8=1 \
+    PATH="/app/.venv/bin:$PATH" \
+    # /app/src ahead of site-packages, so REPO_ROOT resolves to /app. See the note at the top.
+    PYTHONPATH="/app/src:/app/apps/api" \
+    # Outside the user's home, so a browser downloaded by root is readable by the runtime user.
+    PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+
+WORKDIR /app
+
+COPY --from=builder /app/.venv /app/.venv
+
+# Chromium plus the system libraries it needs. `--with-deps` runs apt-get itself and is kept rather than a
+# hand written package list, because that list changes with Chromium and a hand written one goes stale
+# silently. tini is added separately: uvicorn as PID 1 does not reap zombies and does not forward SIGTERM
+# the way an init does, so a stop takes the full timeout instead of shutting down cleanly.
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y tini ca-certificates \
+    && playwright install --with-deps chromium \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# The application source. Copied after the dependency layers so a code change does not reinstall anything.
+COPY src/ ./src/
+COPY apps/api/ ./apps/api/
+COPY pyproject.toml uv.lock README.md ./
+# Read at startup and by the CLI. The registry and the labels are version controlled inputs, not state.
+COPY data/registry/ ./data/registry/
+COPY data/labels/ ./data/labels/
+COPY docs/ ./docs/
+COPY infra/ ./infra/
+
+# The ledger and the artefacts are written at runtime. Created here so they exist with the right owner
+# rather than being created as root on first write by a process that is not root.
+RUN mkdir -p /app/data/ledger /app/artifacts \
+    && groupadd --system --gid 1001 auspice \
+    && useradd --system --uid 1001 --gid auspice --no-create-home auspice \
+    && chown -R auspice:auspice /app/data /app/artifacts \
+    && chmod -R a+rX /opt/playwright
+
+USER auspice
+
+EXPOSE 8000
+
+# The compose healthcheck calls /healthz, which reports the two things that matter: whether the database
+# is reachable and whether the ledger verifies.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=5 \
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz').status==200 else 1)"
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+
+# --workers 1 is mandatory while the rate limiter is in process. See the note at the top of this file.
+# --proxy-headers with --forwarded-allow-ips is not set here on purpose: AUSPICE_API_TRUST_FORWARDED_FOR
+# governs whether the application believes X-Forwarded-For, and turning it on in two places would let the
+# two disagree.
+CMD ["uvicorn", "app.main:app", "--app-dir", "/app/apps/api", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

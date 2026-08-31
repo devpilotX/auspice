@@ -1,12 +1,12 @@
 <div align="center">
-  <img src="apps/web/public/brand/templum-primary.svg" alt="Auspice" width="72" height="72" />
-  <h1>A U S P I C E</h1>
+  <img src="apps/web/public/brand/templum-primary.svg" alt="Permission Bureau" width="72" height="72" />
+  <h1>P E R M I S S I O N&nbsp;&nbsp;B U R E A U</h1>
   <p><strong>A rating bureau for the right to build.</strong></p>
 </div>
 
 ---
 
-Auspice produces a calibrated probability and a time distribution for whether a specific
+Permission Bureau produces a calibrated probability and a time distribution for whether a specific
 project will actually be permitted at a specific location, and it publishes its own
 accuracy record so the number can be used by a credit committee.
 

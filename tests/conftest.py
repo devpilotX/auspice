@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from datetime import date
+from typing import Any
 
 import polars as pl
 import pytest
@@ -108,6 +109,79 @@ def clean_db(db: Connection) -> Connection:
         )
     )
     return db
+
+
+# ---------------------------------------------------------------------------
+# API test clients, and the trap they exist to close
+# ---------------------------------------------------------------------------
+# `app.deps.get_connection` opens its own connection through `transaction()`, which uses the non test
+# engine. Locally AUSPICE_DATABASE_URL points at `auspice` and AUSPICE_TEST_DATABASE_URL at
+# `auspice_test`, so a TestClient request read a different database from the one the fixtures write to.
+#
+# That is not a theoretical problem. Measured on 2026-08-31: `auspice` held 12 jurisdictions with
+# boundaries and 2 ledger entries, `auspice_test` held none of either. The tile tests asserted that a real
+# tile comes back for northern Virginia and passed, against boundaries no test had created. The first
+# version of the public endpoint tests published four ledger entries and the endpoint reported two.
+#
+# CI hides it, which is the worst property: the workflow points both variables at `auspice_test`, so the
+# two agree there and diverge only on a developer's machine. Green locally, different meaning in CI.
+#
+# `api_client` is the fixture to use. `_refuse_untracked_api_connections` makes forgetting it loud.
+
+
+@pytest.fixture(autouse=True)
+def _refuse_untracked_api_connections(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Make forgetting `api_client` fail loudly instead of quietly reading the wrong database.
+
+    Without this, a `TestClient(app)` request resolves `app.deps.get_connection`, which opens a connection
+    to whatever `AUSPICE_DATABASE_URL` names. On a developer machine that is a different database from the
+    one the fixtures write to, so the test asserts against data it did not create and passes for a reason
+    unrelated to the code. In CI both variables name the same database, so the fault is invisible there.
+
+    Replacing the factory means the failure arrives with an explanation at the moment it happens, rather
+    than as a count that is mysteriously wrong. Tests that genuinely want an endpoint reading the database
+    use `api_client`, which overrides the dependency and never reaches this.
+    """
+    try:
+        from app import deps
+    except ImportError:  # pragma: no cover - apps/api absent from the path
+        yield
+        return
+
+    def _refuse(*_args: object, **_kwargs: object) -> Iterator[Connection]:
+        raise RuntimeError(
+            "An API endpoint opened its own database connection during a test. That connection goes to "
+            "AUSPICE_DATABASE_URL, not to the test database, so it reads data the test did not create. "
+            "Use the `api_client` fixture, which overrides app.deps.get_connection with the test "
+            "transaction. See the note above it in tests/conftest.py."
+        )
+
+    monkeypatch.setattr(deps, "transaction", _refuse)
+    yield
+
+
+@pytest.fixture
+def api_client(db: Connection) -> Iterator[Any]:
+    """A FastAPI TestClient whose requests run inside the test transaction.
+
+    Use this rather than constructing `TestClient(app)` directly. Anything the test writes is visible to
+    the endpoint, and nothing survives the rollback.
+    """
+    from fastapi.testclient import TestClient
+
+    from app.deps import get_connection
+    from app.main import app
+
+    # A generator function, not a lambda returning an iterator. FastAPI injects the yielded value for the
+    # former and the iterator object itself for the latter, which fails with AttributeError on `execute`.
+    def _use_the_test_connection() -> Iterator[Connection]:
+        yield db
+
+    app.dependency_overrides[get_connection] = _use_the_test_connection
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.pop(get_connection, None)
 
 
 @pytest.fixture

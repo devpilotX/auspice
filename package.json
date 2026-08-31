@@ -8,6 +8,10 @@
   "engines": {
     "node": ">=24"
   },
+  "overrides": {
+    "postcss": "^8.5.26"
+  },
+  "overridesRationale": "next 15.5.24 pins postcss 8.4.31 exactly, which carries four advisories including GHSA-qx2v-qp2m-jg93, high severity XSS via an unescaped closing style tag in stringify output, and three source map path traversal issues. npm audit fix --force wants Next 16, a major upgrade. This override forces the patched postcss under the existing framework instead, and npm audit then reports zero advisories. Note that npm will not apply it to an existing tree: npm install reports up to date and skips resolution, so package-lock.json and node_modules both have to go first. Remove this override when moving to Next 16 and rerun npm audit.",
   "scripts": {
     "dev": "npm run dev --workspace apps/web",
     "build": "npm run build --workspace apps/web",

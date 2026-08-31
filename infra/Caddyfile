@@ -1,0 +1,44 @@
+# Reverse proxy configuration. Used by the `proxy` service in docker-compose.yml.
+#
+# NOT VERIFIED. Written on a machine with no docker, so this has never been started. The first deploy is
+# the test. What follows is the documented configuration, not an observed working one.
+
+{
+	# A contact address for the certificate authority. Reuses the crawler contact rather than introducing a
+	# second address to keep current, on the principle that one wrong email is better than two.
+	email {$AUSPICE_CRAWLER_CONTACT}
+}
+
+{$AUSPICE_PUBLIC_HOST} {
+	# X-Forwarded-For is overwritten here rather than appended to. The API is configured with
+	# AUSPICE_API_TRUST_FORWARDED_FOR=true, which is only safe because this line guarantees a client
+	# cannot supply its own value and mint an unlimited rate limit allowance.
+	request_header >X-Forwarded-For {remote_host}
+
+	reverse_proxy api:8000 {
+		# The health check the container already exposes, so the proxy stops sending traffic to an API that
+		# reports a broken ledger or an unreachable database rather than passing the failure through.
+		health_uri /healthz
+		health_interval 15s
+		health_timeout 5s
+	}
+
+	# Security headers the API does not set for itself. Content-Security-Policy is deliberately absent:
+	# the API serves JSON and its own Swagger page at /docs, and a policy tight enough to be worth having
+	# would break /docs, which is the one place a partner engineer reads this service by hand.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "DENY"
+		# Caddy advertises itself by default. There is no reason to tell a scanner what to look up.
+		-Server
+	}
+
+	encode gzip zstd
+
+	log {
+		output stdout
+		format console
+	}
+}

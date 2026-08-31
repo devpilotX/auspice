@@ -55,7 +55,9 @@ from auspice.models.survival.model import SurvivalModel
 from auspice.pipeline.features import (
     BY_NAME,
     FEATURE_SET_VERSION,
+    ApplicationSpec,
     FeatureRow,
+    build_for_spec,
     describe,
     feature_names,
 )
@@ -287,57 +289,84 @@ def _staleness_days(conn: Connection, jurisdiction_id: int) -> int | None:
     return int(value) if value is not None else None
 
 
+_PROSPECTIVE_CONTEXT_SQL = text(
+    """
+    SELECT
+        j.legal_framework,
+        j.discretion_index,
+        (SELECT b.id FROM decision_body b
+         WHERE b.jurisdiction_id = j.id
+           AND b.recommendation_is_binding IS NOT TRUE
+         ORDER BY b.seats DESC NULLS LAST, b.id
+         LIMIT 1) AS body_id
+    FROM jurisdiction j
+    WHERE j.id = :jid
+    """
+)
+"""The two jurisdiction columns and the body that ``_build`` needs, without writing anything.
+
+The body subquery reproduces exactly what the previous savepoint INSERT selected, with ``b.id`` added
+as a tiebreaker so the choice is deterministic when two bodies have equal seats. Without the
+tiebreaker the same site could get different features on two calls, which would look like model
+instability and would not be.
+"""
+
+
 def _synthetic_feature_row(
     conn: Connection, *, jurisdiction_id: int, request: SiteRequest, as_of: date
 ) -> FeatureRow:
     """Build features for a hypothetical application that is not in the graph.
 
-    A prospective site has no application row, so one is materialised in a savepoint, features are
-    built against it, and the savepoint is rolled back. That guarantees the prospective score uses
-    exactly the same code path as a historical one, which is the only way the calibration measured on
-    history transfers to it.
-    """
-    from auspice.pipeline.features import build_for_application
+    A prospective site has no application row. Rather than materialise one, this builds the
+    specification the feature builder actually consumes and passes it straight to the same ``_build``
+    that every historical row goes through. That is what makes the calibration measured on history
+    transferable to a prospective score: not that the row exists, but that the code path is identical.
+    ``tests/unit/test_features_spec_equivalence.py`` holds that claim to an assertion.
 
-    savepoint = conn.begin_nested()
-    try:
-        application_id = int(
-            conn.execute(
-                text(
-                    """
-                    INSERT INTO application (
-                        jurisdiction_id, body_id, external_id, use_class, relief_sought, by_right,
-                        acres, capacity_mw, filed_on, outcome, censored, label_source,
-                        staff_recommendation
-                    )
-                    SELECT
-                        :jid,
-                        (SELECT id FROM decision_body
-                         WHERE jurisdiction_id = :jid
-                           AND recommendation_is_binding IS NOT TRUE
-                         ORDER BY seats DESC NULLS LAST LIMIT 1),
-                        :ext, :use_class, :relief, :by_right, :acres, :mw, :filed,
-                        'pending', true, 'extracted', :staff
-                    RETURNING id
-                    """
-                ).bindparams(
-                    jid=jurisdiction_id,
-                    ext=f"prospective:{secrets.token_hex(8)}",
-                    use_class=request.use_class.value,
-                    relief=[r.value for r in request.relief_sought],
-                    by_right=request.by_right,
-                    acres=request.acres,
-                    mw=request.capacity_mw,
-                    filed=as_of,
-                    staff=request.staff_recommendation,
-                )
-            ).scalar_one()
-        )
-        row = build_for_application(conn, application_id, as_of=as_of)
-        row.application_id = 0  # it does not exist outside the savepoint
-        return row
-    finally:
-        savepoint.rollback()
+    This used to open a savepoint, INSERT an application, build against it and roll back. That made
+    every scoring read a write: one dead tuple in the graph's primary table per site scored, one
+    burned sequence value, and one subtransaction per site with no bound on the count, so a five
+    hundred site portfolio opened five hundred subtransactions inside a single long lived snapshot.
+    Nothing about the resulting features required any of it.
+    """
+    context = (
+        conn.execute(_PROSPECTIVE_CONTEXT_SQL.bindparams(jid=jurisdiction_id)).mappings().one()
+    )
+
+    spec: ApplicationSpec = {
+        # Zero is not a real application id and nothing in the graph has it. The history queries
+        # exclude the subject row with ``a.id <> :application_id``, so a value that matches nothing is
+        # exactly right: a prospective site has no self to exclude.
+        "id": 0,
+        "jurisdiction_id": jurisdiction_id,
+        "body_id": int(context["body_id"]) if context["body_id"] is not None else None,
+        "use_class": request.use_class.value,
+        # ``.value`` rather than the enum members. The builder compares these against the string
+        # values in DISCRETIONARY_RELIEF, and the previous implementation got the coercion for free by
+        # round tripping through a PostgreSQL text array. That coercion is now explicit.
+        "relief_sought": [r.value for r in request.relief_sought],
+        "by_right": request.by_right,
+        "acres": request.acres,
+        "capacity_mw": request.capacity_mw,
+        "filed_on": as_of,
+        "decided_on": None,
+        "staff_recommendation": request.staff_recommendation,
+        "applicant_cluster_id": None,
+        # A prospective site names a jurisdiction and optionally coordinates, never a parcel row, so
+        # the geometry features report unknown. Resolving a coordinate pair to a parcel is the next
+        # step and it is a different task: it needs parcel geometry loaded, which no county has yet.
+        "parcel_id": None,
+        "legal_framework": context["legal_framework"],
+        "discretion_index": float(context["discretion_index"])
+        if context["discretion_index"] is not None
+        else None,
+        # A prospective site carries no parcel and no resolved applicant, so these are unknown rather
+        # than absent. The builder already treats None as unknown and reports the feature as missing.
+        "parcel_acres": None,
+        "prior_industrial_use": None,
+        "entity_opacity": None,
+    }
+    return build_for_spec(conn, spec, as_of=as_of)
 
 
 def _feature_frame(

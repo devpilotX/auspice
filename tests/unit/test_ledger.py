@@ -283,12 +283,18 @@ class TestPublicRecord:
             ledger.publish(clean_db, prediction_id=prediction_id, payload=_payload(index))
         ledger.grade(clean_db, seq=1, outcome=Outcome.denied, resolved_on=date(2026, 11, 3))
 
-        record = ledger.public_record(clean_db)
+        # include_entries is opt in. The API never asked for the list and does not return it, so the
+        # public endpoint no longer materialises every payload to count four things. This test is about
+        # completeness of the record, so it asks for the list on purpose.
+        record = ledger.public_record(clean_db, include_entries=True)
         assert record["published"] == 3
         assert record["resolved"] == 1
         assert record["pending"] == 2
         assert record["chain"]["ok"] is True
         assert len(record["entries"]) == 3
+
+        # And the default omits it, so a public request cannot accidentally pull the whole chain.
+        assert "entries" not in ledger.public_record(clean_db)
 
     def test_the_export_is_verifiable_line_by_line(self, clean_db: Connection) -> None:
         """A record that can only be checked through our own interface is not a public record."""

@@ -1,0 +1,44 @@
+# Line endings, declared once so no editor and no tool can decide them per file.
+#
+# Why this file exists. The repository was predominantly LF with five CRLF files and no policy, on a
+# Windows machine. Any tool that writes CRLF into an LF file produces a diff that rewrites every line,
+# which hides the actual change from review. That happened five times during the audit of 2026-08-30
+# and each occurrence had to be found and repaired by hand. Declaring the policy here moves the fix
+# from vigilance to mechanism: git normalises on staging, so the diff shows the change and nothing else.
+#
+# Recorded as the resolution of D-DEV-02 in .agent/DECISIONS.md.
+
+# Everything git detects as text is stored LF in the repository and checked out LF.
+* text=auto eol=lf
+
+# PowerShell is the exception. Windows PowerShell 5.1 tolerates LF, but signed scripts and here-strings
+# are sensitive to it and the bootstrap script is the one file an operator runs before anything works.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary, so git never inspects or converts them. Visual baselines in particular must be byte exact:
+# a single converted byte turns the whole suite red for a reason unrelated to the interface.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.zip binary
+*.gz binary
+*.bundle binary
+*.wav binary
+*.mp3 binary
+*.m4a binary
+
+# Generated, and reviewed as a whole rather than line by line. The TypeScript under
+# packages/shared-types/src/generated/ is not tracked at all: it is rebuilt from openapi.json, which is,
+# and scripts/check-types-current.mjs is what keeps the two in step.
+uv.lock linguist-generated=true
+package-lock.json linguist-generated=true
+packages/shared-types/openapi.json linguist-generated=true

@@ -1,0 +1,72 @@
+# What never goes into the build context.
+#
+# Without this file the context is about four gigabytes and almost none of it is wanted: .tools holds the
+# vendored PostgreSQL and PostGIS archives at 1.58 GB, .venv holds a Windows virtualenv at 1.54 GB that
+# cannot run in a Linux image anyway, node_modules is 443 MB the API never imports, and apps/web/.next is
+# 289 MB of build output. Docker sends the context to the daemon before reading the first instruction, so
+# an ignored file is not merely unused, it is transferred and then discarded.
+#
+# Written in the same commit as infra/Dockerfile.api. A Dockerfile whose build takes ten minutes to send
+# nothing useful is a Dockerfile people stop using.
+
+# ---------------------------------------------------------------------------
+# Environments and caches. The Linux image builds its own virtualenv.
+# ---------------------------------------------------------------------------
+.venv/
+**/__pycache__/
+**/*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+.coverage
+coverage.xml
+htmlcov/
+
+# ---------------------------------------------------------------------------
+# Node. The API image runs no JavaScript.
+# ---------------------------------------------------------------------------
+node_modules/
+apps/web/.next/
+apps/web/out/
+apps/web/playwright-report/
+apps/web/test-results/
+**/*.tsbuildinfo
+
+# ---------------------------------------------------------------------------
+# Vendored binaries and local runtime state.
+# ---------------------------------------------------------------------------
+.tools/
+var/
+mlruns/
+artifacts/
+*.log
+
+# The raw corpus is content addressed object storage. In production it lives in S3 or R2, which is what
+# AUSPICE_RAW_BACKEND=s3 selects, so a local copy has no reason to be in the image.
+data/raw/
+data/derived/
+
+# ---------------------------------------------------------------------------
+# Secrets. Belt and braces: these are gitignored too, but a build context is not a git tree and an
+# accidental .env in the image is a credential in a layer that anyone who can pull it can read.
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.kiro/
+
+# ---------------------------------------------------------------------------
+# History and tooling that has no bearing on the runtime.
+# ---------------------------------------------------------------------------
+.git/
+.github/
+.gitignore
+.agent/
+tests/
+AUSPICE_Master_Spec.md
+AUSPICE_BUILD_PROMPT.md
+AUDIT_REPORT.md
+bootstrap.log

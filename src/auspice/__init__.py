@@ -1,4 +1,4 @@
-"""Auspice: a rating bureau for the right to build.
+"""Permission Bureau: a rating bureau for the right to build.
 
 The package is one installable distribution whose subpackages map one to one onto
 the pipeline stages in section 6 of the master specification.

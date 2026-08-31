@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import Connection, text
 
 from app.deps import Db
@@ -46,10 +46,18 @@ def _freshness(conn: Connection, slug: str | None = None) -> list[dict[str, Any]
 
 
 @router.get("/accuracy", response_model=AccuracyResponse, summary="The published accuracy record")
-async def accuracy(conn: Db) -> AccuracyResponse:
+def accuracy(conn: Db, response: Response) -> AccuracyResponse:
     from auspice import ledger
 
     record = ledger.public_record(conn)
+
+    # Keyed to the chain head, which is the only thing that changes this page. A conditional request from
+    # a browser or a CDN then costs the head lookup rather than a verification, and the ledger only ever
+    # appends, so a matching head means a byte identical answer. No max-age: the page must be able to show
+    # a newly published prediction immediately, and revalidation is cheap once there is a validator.
+    head_seq, head_hash = ledger.head(conn)
+    response.headers["ETag"] = f'W/"ledger-{head_seq}-{head_hash[:16]}"'
+    response.headers["Cache-Control"] = "public, no-cache"
 
     kill_test = (
         conn.execute(
@@ -76,6 +84,8 @@ async def accuracy(conn: Db) -> AccuracyResponse:
         )
     )
 
+    anchor_status = ledger.anchor_status(conn, limit=5)
+
     return AccuracyResponse(
         published=record["published"],
         resolved=record["resolved"],
@@ -84,6 +94,7 @@ async def accuracy(conn: Db) -> AccuracyResponse:
         abstained=record["abstained"],
         brier_score=record["brier_score"],
         chain=record["chain"],
+        anchor={**anchor_status.as_dict(), "statement": anchor_status.statement()},
         misses=record["misses"],
         reliability=None,
         kill_test=dict(kill_test) if kill_test else None,
@@ -92,24 +103,43 @@ async def accuracy(conn: Db) -> AccuracyResponse:
 
 
 @router.get("/ledger", summary="The full prediction ledger, newline delimited JSON")
-async def ledger_export(conn: Db) -> Any:
+def ledger_export(
+    conn: Db,
+    after: Annotated[int, Query(ge=0, description="Return entries after this sequence number")] = 0,
+    limit: Annotated[
+        int | None, Query(ge=1, le=100_000, description="Maximum entries to return")
+    ] = None,
+) -> Any:
     """The whole ledger, so anyone can verify it without using our interface.
 
-    A record that can only be checked through the publisher's own tooling is not a public record.
+    A record that can only be checked through the publisher's own tooling is not a public record, so this
+    defaults to everything and there is no page size the caller cannot turn off. What changed is how it is
+    sent: streamed a line at a time rather than assembled into one string first. The record grows forever
+    by design, and an endpoint that materialises all of it to serve it is an endpoint whose memory cost
+    grows with the thing the company is trying to accumulate.
+
+    ``after`` and ``limit`` exist for a consumer fetching in slices, not for us deciding how much of our
+    own record to show. Both are optional and neither is applied unless asked for.
     """
-    from fastapi.responses import PlainTextResponse
+    from fastapi.responses import StreamingResponse
 
     from auspice import ledger
 
-    return PlainTextResponse(
-        ledger.export_jsonl(conn),
+    head_seq, head_hash = ledger.head(conn)
+
+    return StreamingResponse(
+        ledger.iter_jsonl(conn, after_seq=after, limit=limit),
         media_type="application/x-ndjson",
-        headers={"Content-Disposition": 'attachment; filename="auspice-ledger.ndjson"'},
+        headers={
+            "Content-Disposition": 'attachment; filename="auspice-ledger.ndjson"',
+            "ETag": f'W/"ledger-{head_seq}-{head_hash[:16]}-{after}-{limit}"',
+            "Cache-Control": "public, no-cache",
+        },
     )
 
 
 @router.get("/jurisdictions", response_model=list[JurisdictionSummary], summary="Coverage")
-async def jurisdictions(conn: Db) -> list[JurisdictionSummary]:
+def jurisdictions(conn: Db) -> list[JurisdictionSummary]:
     from auspice.pipeline.registry.loader import registry_summary
 
     freshness_by_slug = {row["slug"]: row for row in _freshness(conn)}
@@ -148,8 +178,8 @@ async def jurisdictions(conn: Db) -> list[JurisdictionSummary]:
     response_model=JurisdictionProfile,
     summary="A jurisdiction profile",
 )
-async def jurisdiction_profile(slug: str, conn: Db) -> JurisdictionProfile:
-    summaries = await jurisdictions(conn)
+def jurisdiction_profile(slug: str, conn: Db) -> JurisdictionProfile:
+    summaries = jurisdictions(conn)
     summary = next((s for s in summaries if s.slug == slug), None)
     if summary is None:
         raise HTTPException(
@@ -247,7 +277,7 @@ async def jurisdiction_profile(slug: str, conn: Db) -> JurisdictionProfile:
 
 
 @router.get("/locate", response_model=LocateResponse, summary="Who decides for this coordinate")
-async def locate(
+def locate(
     conn: Db,
     longitude: Annotated[float, Query(ge=-180, le=180)],
     latitude: Annotated[float, Query(ge=-90, le=90)],
@@ -296,7 +326,7 @@ async def locate(
 
 
 @router.get("/freshness", response_model=list[FreshnessRow], summary="How stale our data is")
-async def freshness(conn: Db) -> list[FreshnessRow]:
+def freshness(conn: Db) -> list[FreshnessRow]:
     return [
         FreshnessRow(
             jurisdiction=row["slug"],
@@ -316,7 +346,7 @@ async def freshness(conn: Db) -> list[FreshnessRow]:
 
 
 @router.get("/methodology", summary="The published method")
-async def methodology() -> dict[str, Any]:
+def methodology() -> dict[str, Any]:
     """The thresholds and rules the product commits to, served as data.
 
     Published from the same constants the code enforces rather than transcribed into prose, so the
@@ -370,7 +400,7 @@ async def methodology() -> dict[str, Any]:
             for spec in FEATURES
         ],
         "disclaimer": (
-            "Auspice produces a probabilistic opinion with a disclosed methodology. It is not legal "
+            "Permission Bureau produces a probabilistic opinion with a disclosed methodology. It is not legal "
             "advice, not an appraisal and not a guarantee. It models published voting records and "
             "stated positions, never inferred motives, and never predicts how a named individual will "
             "vote."

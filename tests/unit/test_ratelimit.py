@@ -121,32 +121,33 @@ class TestTheLimitsChosen:
 
 
 class TestThroughTheApp:
-    @pytest.fixture
-    def client(self) -> TestClient:
-        from app.main import app
+    """Exercised through api_client, not a bare TestClient.
 
-        return TestClient(app)
+    /v1/public/freshness reads the database, so a bare client would open its own connection to
+    AUSPICE_DATABASE_URL and read a different database from the one the fixtures write to. The autouse
+    guard in conftest refuses that now, which is how these two tests found their way here.
+    """
 
-    def test_a_flood_is_refused_with_a_retry_after(self, client: TestClient) -> None:
+    def test_a_flood_is_refused_with_a_retry_after(self, api_client: TestClient) -> None:
         # Well past the burst for a public path.
-        statuses = [client.get("/v1/public/freshness").status_code for _ in range(60)]
+        statuses = [api_client.get("/v1/public/freshness").status_code for _ in range(60)]
         assert 429 in statuses, "a public endpoint accepted 60 requests in a burst"
 
         first_refusal = statuses.index(429)
         assert first_refusal >= 20, "the burst allowance was smaller than advertised"
 
-        response = client.get("/v1/public/freshness")
+        response = api_client.get("/v1/public/freshness")
         if response.status_code == 429:
             assert "Retry-After" in response.headers
             assert int(response.headers["Retry-After"]) >= 1
             assert "Too many requests" in response.json()["detail"]
 
-    def test_health_survives_a_flood(self, client: TestClient) -> None:
+    def test_health_survives_a_flood(self, api_client: TestClient) -> None:
         for _ in range(80):
-            client.get("/v1/public/freshness")
-        assert client.get("/healthz").status_code == 200
+            api_client.get("/v1/public/freshness")
+        assert api_client.get("/healthz").status_code == 200
 
-    def test_the_refusal_names_the_limit_it_applied(self, client: TestClient) -> None:
+    def test_the_refusal_names_the_limit_it_applied(self, api_client: TestClient) -> None:
         from app.ratelimit import limit_for, refusal
 
         body, headers = refusal("/v1/tiles/jurisdictions/7/36/48.mvt", 3)

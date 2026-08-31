@@ -24,7 +24,7 @@ from typing import Any, Self
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Connection
 
@@ -32,6 +32,7 @@ from auspice.db import schema
 from auspice.domain import (
     APPROVAL_OUTCOMES,
     TERMINAL_OUTCOMES,
+    VOTE_POSITIONS,
     BodyKind,
     InstrumentKind,
     ObjectionGround,
@@ -113,6 +114,48 @@ class Labelled(BaseModel):
         return self
 
 
+class MemberVote(BaseModel):
+    """How one named member of a body voted on one application.
+
+    Three features depend on this and can populate from nothing else: ``board_composition_score``,
+    ``swing_seat_count`` and, through the member terms it creates,
+    ``turnover_since_last_comparable``. Until this existed the aggregate ``vote_for`` and
+    ``vote_against`` were the only tally a label could carry, so those three features returned unknown
+    for every row no matter how much labelling was done. They were reachable only through the
+    extraction pipeline, which needs a language model key.
+
+    ``name`` is the member's name as the source spells it. Spellings vary between minutes, so the
+    loader keeps every spelling it sees in ``decision_maker.name_variants`` and never destroys one,
+    per section 6.5.
+
+    Section 8.9 forbids predicting how a named individual will vote, and this does not do that. It
+    records how they did vote, from the public record, and the features built on it are aggregates
+    only. The distinction is the difference between reading minutes and profiling a person.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=2, max_length=200)
+    position: str = Field(description="for, against, abstain, absent or recused")
+    seat: str | None = Field(default=None, description="District or seat label, as published")
+    term_start: date | None = None
+    term_end: date | None = None
+
+    @model_validator(mode="after")
+    def _known_position(self) -> Self:
+        if self.position not in VOTE_POSITIONS:
+            raise ValueError(
+                f"vote position must be one of {sorted(VOTE_POSITIONS)}, not {self.position!r}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _terms_ordered(self) -> Self:
+        if self.term_start and self.term_end and self.term_end < self.term_start:
+            raise ValueError(f"{self.name}: term_end precedes term_start")
+        return self
+
+
 class DecisionLabel(Labelled):
     """One application to one body."""
 
@@ -135,6 +178,11 @@ class DecisionLabel(Labelled):
     vote_for: int | None = Field(default=None, ge=0)
     vote_against: int | None = Field(default=None, ge=0)
     vote_abstain: int | None = Field(default=None, ge=0)
+    member_votes: list[MemberVote] = Field(
+        default_factory=list,
+        description="Per member votes, when the minutes name who voted which way. Optional, and the "
+        "only route by which the board composition features can populate from hand labelling.",
+    )
     staff_recommendation: str | None = None
     conditions: list[str] = Field(default_factory=list)
     objection_grounds: list[ObjectionGround] = Field(default_factory=list)
@@ -163,6 +211,67 @@ class DecisionLabel(Labelled):
     def _pending_has_no_decision(self) -> Self:
         if self.outcome is Outcome.pending and self.decided_on is not None:
             raise ValueError(f"{self.label_id}: outcome is pending but a decision date is set")
+        return self
+
+    @model_validator(mode="after")
+    def _member_votes_agree_with_the_tally(self) -> Self:
+        """Two records of the same vote have to say the same thing.
+
+        A label can carry an aggregate tally, a per member list, or both. When it carries both they are
+        two transcriptions of one event, and a disagreement means one of them is wrong. Loading both
+        without checking would put a contradiction into the training set and into the evidence a
+        customer reads, which is worse than carrying only one of them.
+        """
+        if not self.member_votes:
+            return self
+
+        names = [vote.name.strip().casefold() for vote in self.member_votes]
+        duplicates = {name for name in names if names.count(name) > 1}
+        if duplicates:
+            raise ValueError(
+                f"{self.label_id}: the same member appears twice in member_votes: "
+                f"{sorted(duplicates)}. One person casts one vote."
+            )
+
+        counted = {
+            position: sum(1 for vote in self.member_votes if vote.position == position)
+            for position in ("for", "against", "abstain")
+        }
+        for field_name, position in (
+            ("vote_for", "for"),
+            ("vote_against", "against"),
+            ("vote_abstain", "abstain"),
+        ):
+            declared = getattr(self, field_name)
+            if declared is not None and declared != counted[position]:
+                raise ValueError(
+                    f"{self.label_id}: {field_name} is {declared} and member_votes contains "
+                    f"{counted[position]} {position!r} vote(s). Two transcriptions of one vote "
+                    "disagree, so one is wrong."
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _member_terms_cover_the_decision(self) -> Self:
+        """A member cannot vote on a decision made outside their term.
+
+        Feature queries filter members by term against the as-of date, so a term that does not cover
+        the decision date silently removes that member from every feature computed for it. The row
+        would load, look complete, and quietly contribute less than it appears to.
+        """
+        if self.decided_on is None:
+            return self
+        for vote in self.member_votes:
+            if vote.term_start and vote.term_start > self.decided_on:
+                raise ValueError(
+                    f"{self.label_id}: {vote.name} has a term starting {vote.term_start}, after the "
+                    f"decision on {self.decided_on}. They cannot have voted on it."
+                )
+            if vote.term_end and vote.term_end < self.decided_on:
+                raise ValueError(
+                    f"{self.label_id}: {vote.name} has a term ending {vote.term_end}, before the "
+                    f"decision on {self.decided_on}. They cannot have voted on it."
+                )
         return self
 
     @model_validator(mode="after")
@@ -330,6 +439,7 @@ class LabelLoadReport:
         self.decisions = 0
         self.instruments = 0
         self.objections = 0
+        self.votes = 0
         self.events = 0
         self.citations = 0
         self.unknown_jurisdictions: list[str] = []
@@ -340,6 +450,7 @@ class LabelLoadReport:
             "decisions": self.decisions,
             "instruments": self.instruments,
             "objections": self.objections,
+            "votes": self.votes,
             "events": self.events,
             "citations": self.citations,
             "unknown_jurisdictions": sorted(set(self.unknown_jurisdictions)),
@@ -507,6 +618,10 @@ def load(
             )
             report.objections += 1
 
+        report.votes += _record_member_votes(
+            conn, application_id=application_id, body_id=body_id, row=row
+        )
+
         report.events += _write_decision_events(conn, jurisdiction_id, application_id, body_id, row)
 
     for instrument_row in labels.instruments:
@@ -595,6 +710,99 @@ def load(
 
     log.info("labels loaded", **report.as_dict())
     return report
+
+
+def _record_member_votes(
+    conn: Connection, *, application_id: int, body_id: int | None, row: DecisionLabel
+) -> int:
+    """Write ``decision_maker`` and ``vote`` rows for a decision that names who voted how.
+
+    Members are matched by name within the body, case insensitively and ignoring surrounding
+    whitespace, because minutes spell the same person several ways. Every spelling seen is kept in
+    ``name_variants`` and none is ever destroyed, per section 6.5. Matching on the normalised name
+    rather than creating a new member per spelling is what makes the vote history features work at all:
+    two spellings of one supervisor would otherwise look like two members with half the record each.
+
+    Term dates are widened, never narrowed. A later label that shows the same person voting earlier
+    than their recorded term started means the recorded term was incomplete, and the earlier date is
+    the better one. Narrowing would let one badly transcribed label hide a member from every feature
+    computed for the decisions they actually sat on.
+    """
+    if not row.member_votes or body_id is None:
+        return 0
+
+    written = 0
+    for member in row.member_votes:
+        display = member.name.strip()
+        normalised = display.casefold()
+
+        existing = conn.execute(
+            select(
+                schema.decision_maker.c.id,
+                schema.decision_maker.c.name_variants,
+                schema.decision_maker.c.term_start,
+                schema.decision_maker.c.term_end,
+            ).where(
+                schema.decision_maker.c.body_id == body_id,
+                func.lower(schema.decision_maker.c.display_name) == normalised,
+            )
+        ).first()
+
+        if existing is None:
+            maker_id = int(
+                conn.execute(
+                    schema.decision_maker.insert()
+                    .values(
+                        body_id=body_id,
+                        display_name=display,
+                        name_variants=[display],
+                        seat_label=member.seat,
+                        term_start=member.term_start,
+                        term_end=member.term_end,
+                    )
+                    .returning(schema.decision_maker.c.id)
+                ).scalar_one()
+            )
+        else:
+            maker_id = int(existing.id)
+            variants = list(existing.name_variants or [])
+            if display not in variants:
+                variants.append(display)
+            updates: dict[str, Any] = {"name_variants": variants}
+            if member.term_start is not None and (
+                existing.term_start is None or member.term_start < existing.term_start
+            ):
+                updates["term_start"] = member.term_start
+            if member.term_end is not None and (
+                existing.term_end is None or member.term_end > existing.term_end
+            ):
+                updates["term_end"] = member.term_end
+            if member.seat:
+                updates["seat_label"] = member.seat
+            conn.execute(
+                schema.decision_maker.update()
+                .where(schema.decision_maker.c.id == maker_id)
+                .values(**updates)
+            )
+
+        statement = pg_insert(schema.vote).values(
+            application_id=application_id,
+            maker_id=maker_id,
+            position=member.position,
+            voted_on=row.decided_on,
+        )
+        conn.execute(
+            statement.on_conflict_do_update(
+                index_elements=[schema.vote.c.application_id, schema.vote.c.maker_id],
+                set_={
+                    "position": statement.excluded.position,
+                    "voted_on": statement.excluded.voted_on,
+                },
+            )
+        )
+        written += 1
+
+    return written
 
 
 def _vote_string(row: InstrumentLabel) -> str | None:
