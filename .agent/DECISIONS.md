@@ -126,4 +126,4 @@ in the database, for example a feature computed by a trigger or a generated colu
 cannot serve it and the savepoint returns. `months_to_decision` is a generated column today and is not
 read by `_build`, so this is not currently the case.
 
-**Checkpoint:** checkpoint/019-no-savepoint-scoring
+**Checkpoint:** checkpoint/020-no-savepoint-scoring
