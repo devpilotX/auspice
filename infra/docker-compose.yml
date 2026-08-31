@@ -1,83 +1,125 @@
+# A single service and a database. Section 7.6 rejects Kubernetes outright: one person,
+# one service, one box. This file is what runs on the Hetzner machine and what runs in CI.
+#
+# On Windows without Docker, infra/scripts/bootstrap-postgres.ps1 produces an equivalent
+# local cluster with the same extensions and the same port.
+
+name: auspice
+
 services:
   db:
     build:
       context: ..
       dockerfile: infra/Dockerfile.db
     image: auspice-db:postgres17-postgis3.5-pgvector0.8.5
+    container_name: auspice-db
+    restart: unless-stopped
     environment:
       POSTGRES_USER: auspice
-      POSTGRES_PASSWORD: auspice
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the environment}
       POSTGRES_DB: auspice
+      # C collation matches the local bootstrap so sort order is identical everywhere.
+      POSTGRES_INITDB_ARGS: "--data-checksums --encoding=UTF8 --locale=C"
     ports:
+      # Loopback only. Nothing about this database is reachable from the network.
       - "127.0.0.1:55432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./scripts/db-extensions.sql:/docker-entrypoint-initdb.d/10-extensions.sql:ro
+    command:
+      - postgres
+      - -c
+      - shared_buffers=1GB
+      - -c
+      - work_mem=64MB
+      - -c
+      - maintenance_work_mem=512MB
+      - -c
+      - effective_cache_size=6GB
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - timezone=UTC
+      - -c
+      - log_min_duration_statement=500
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U auspice -d auspice"]
-      interval: 2s
+      interval: 5s
       timeout: 5s
       retries: 20
-    restart: unless-stopped
 
   api:
     build:
       context: ..
       dockerfile: infra/Dockerfile.api
-    environment:
-      AUSPICE_ENV: production
-      AUSPICE_DATABASE_URL: postgresql+psycopg://auspice:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/auspice
-      AUSPICE_RAW_BACKEND: s3
-      AUSPICE_RAW_BUCKET: ${AUSPICE_RAW_BUCKET:?set AUSPICE_RAW_BUCKET}
-      AUSPICE_RAW_ACCESS_KEY_ID: ${AUSPICE_RAW_ACCESS_KEY_ID:?set AUSPICE_RAW_ACCESS_KEY_ID}
-      AUSPICE_RAW_SECRET_ACCESS_KEY: ${AUSPICE_RAW_SECRET_ACCESS_KEY:?set AUSPICE_RAW_SECRET_ACCESS_KEY}
-      AUSPICE_API_KEYS: ${AUSPICE_API_KEYS:?set AUSPICE_API_KEYS}
-      AUSPICE_CRAWLER_CONTACT: ${AUSPICE_CRAWLER_CONTACT:?set AUSPICE_CRAWLER_CONTACT}
-      AUSPICE_API_CORS_ORIGINS: ${AUSPICE_API_CORS_ORIGINS:-http://localhost:3000}
-      AUSPICE_API_TRUST_FORWARDED_FOR: ${AUSPICE_API_TRUST_FORWARDED_FOR:-false}
-      AUSPICE_SENTRY_DSN: ${AUSPICE_SENTRY_DSN:-}
-      AUSPICE_SENTRY_TRACES_SAMPLE_RATE: ${AUSPICE_SENTRY_TRACES_SAMPLE_RATE:-0.0}
-      AUSPICE_METRICS_TOKEN: ${AUSPICE_METRICS_TOKEN:-}
-      AUSPICE_LEDGER_ANCHOR_URL: ${AUSPICE_LEDGER_ANCHOR_URL:-}
-      AUSPICE_ALERT_CHANNEL: ${AUSPICE_ALERT_CHANNEL:-log}
-      AUSPICE_ALERT_WEBHOOK_URL: ${AUSPICE_ALERT_WEBHOOK_URL:-}
-      AUSPICE_ALERT_SMTP_HOST: ${AUSPICE_ALERT_SMTP_HOST:-}
-      AUSPICE_ALERT_SMTP_PORT: ${AUSPICE_ALERT_SMTP_PORT:-587}
-      AUSPICE_ALERT_SMTP_USERNAME: ${AUSPICE_ALERT_SMTP_USERNAME:-}
-      AUSPICE_ALERT_SMTP_PASSWORD: ${AUSPICE_ALERT_SMTP_PASSWORD:-}
-      AUSPICE_ALERT_SMTP_STARTTLS: ${AUSPICE_ALERT_SMTP_STARTTLS:-true}
-      AUSPICE_ALERT_SENDER: ${AUSPICE_ALERT_SENDER:-}
-      AUSPICE_ALERT_FALLBACK_RECIPIENT: ${AUSPICE_ALERT_FALLBACK_RECIPIENT:-}
-    ports:
-      - "127.0.0.1:8000:8000"
+    container_name: auspice-api
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)\"",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-    restart: unless-stopped
-
-  web:
-    build:
-      context: ..
-      dockerfile: infra/Dockerfile.web
-      args:
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://127.0.0.1:8000}
     environment:
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://127.0.0.1:8000}
+      AUSPICE_ENV: production
+      AUSPICE_DATABASE_URL: postgresql+psycopg://auspice:${POSTGRES_PASSWORD}@db:5432/auspice
+      AUSPICE_RAW_BACKEND: s3
+      AUSPICE_RAW_BUCKET: ${AUSPICE_RAW_BUCKET}
+      AUSPICE_RAW_ENDPOINT_URL: ${AUSPICE_RAW_ENDPOINT_URL}
+      AUSPICE_RAW_ACCESS_KEY_ID: ${AUSPICE_RAW_ACCESS_KEY_ID}
+      AUSPICE_RAW_SECRET_ACCESS_KEY: ${AUSPICE_RAW_SECRET_ACCESS_KEY}
+      AUSPICE_CRAWLER_CONTACT: ${AUSPICE_CRAWLER_CONTACT}
+      AUSPICE_API_KEYS: ${AUSPICE_API_KEYS}
+      # Required, and it has no default here on purpose. config.py falls back to
+      # http://localhost:3000,http://127.0.0.1:3000, which is correct for development and refuses every
+      # request from a deployed web origin. A production stack that inherited that default served an API
+      # the interface could not call, and the browser reported it as a network error rather than as a
+      # policy refusal, so it looked like the API was down. Compose fails fast on an unset variable
+      # instead, because a stack that starts and cannot be called is worse than one that does not start.
+      AUSPICE_API_CORS_ORIGINS: ${AUSPICE_API_CORS_ORIGINS:?set the web origin, comma separated, no trailing slash}
+      # On, because the proxy below overwrites X-Forwarded-For. Only ever turn this on when something
+      # upstream is guaranteed to overwrite it: a client sets that header freely, so trusting it without a
+      # proxy in front hands anyone an unlimited rate limit allowance by rotating a string.
+      AUSPICE_API_TRUST_FORWARDED_FOR: "true"
+      AUSPICE_LLM_PROVIDER: ${AUSPICE_LLM_PROVIDER:-none}
+      AUSPICE_LLM_API_KEY: ${AUSPICE_LLM_API_KEY:-}
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz').status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # The only service exposed off the machine. The database and the API both bind to loopback, so before
+  # this existed nothing could reach either from outside and the stack had no way to serve anyone.
+  #
+  # Caddy rather than nginx for one reason: it obtains and renews a certificate itself from the domain
+  # name and needs no certbot, no cron entry and no renewal that silently stops working. For a single
+  # operator that is the difference between TLS that keeps working and TLS that expires on a Sunday.
+  #
+  # NOT VERIFIED. Docker is not installed on the machine this was written on, so this service has never
+  # been started and the certificate flow has never run. It is written from the documented configuration
+  # rather than from an observed working stack. Treat the first deploy as the test.
+  proxy:
+    image: caddy:2.10-alpine
+    container_name: auspice-proxy
+    restart: unless-stopped
     depends_on:
       api:
         condition: service_healthy
-    restart: unless-stopped
+    environment:
+      # The public hostname. Caddy uses it both to route and to request the certificate, so a wrong value
+      # fails visibly at startup rather than serving the wrong thing.
+      AUSPICE_PUBLIC_HOST: ${AUSPICE_PUBLIC_HOST:?set the public hostname, for example api.permissionbureau.com}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and the account key. Without a volume Caddy requests a new certificate on every
+      # restart and will be rate limited by the certificate authority within a day.
+      - caddy-data:/data
+      - caddy-config:/config
 
 volumes:
   pgdata:
+  caddy-data:
+  caddy-config:

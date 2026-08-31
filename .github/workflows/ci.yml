@@ -1,41 +1,43 @@
+# Lint, type check, test, migrate, build. Section 7.2 calls CI non-negotiable even solo, because it is
+# the only thing standing between a bad prompt or a bad migration and production.
+#
+# Every job here runs the same command a developer runs locally. There is no CI-only script and no
+# CI-only flag, so a green build means the thing that was tested is the thing that ships.
+
 name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  UV_LOCKED: "1"
-  NEXT_TELEMETRY_DISABLED: "1"
+  UV_FROZEN: "1"
+  PYTHONUTF8: "1"
 
 jobs:
   python:
     name: python
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
     env:
       AUSPICE_ENV: test
+      AUSPICE_DATABASE_URL: postgresql+psycopg://auspice:auspice@127.0.0.1:55432/auspice_test
       AUSPICE_TEST_DATABASE_URL: postgresql+psycopg://auspice:auspice@127.0.0.1:55432/auspice_test
       AUSPICE_CRAWLER_CONTACT: ci@auspice.example
+
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
+
       - name: Build database image
         run: docker build --file infra/Dockerfile.db --tag auspice-db:ci .
+
       - name: Start database
         run: |
           docker run --detach \
@@ -70,79 +72,177 @@ jobs:
 
           docker logs auspice-db-ci
           exit 1
-      - name: Install Python dependencies
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
         run: uv sync --all-extras --dev
-      - name: Verify extensions
-        run: >-
-          PGPASSWORD=auspice psql
-          --host 127.0.0.1
-          --port 55432
-          --username auspice
-          --dbname auspice_test
-          --set ON_ERROR_STOP=1
-          --file infra/scripts/db-extensions.sql
-      - name: Migrate test database
+
+      - name: Enable extensions
+        # CREATE EXTENSION needs superuser, so it happens here rather than in a migration. The first
+        # migration asserts they are present and fails loudly if they are not.
+        run: |
+          PGPASSWORD=auspice psql -h 127.0.0.1 -p 55432 -U auspice -d auspice_test \
+            -v ON_ERROR_STOP=1 -f infra/scripts/db-extensions.sql
+
+      - name: Lint
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Type check
+        run: uv run mypy
+
+      - name: Migrate
         run: uv run alembic -c infra/alembic.ini upgrade head
-      - name: Ruff lint
-        run: uv run ruff check .
-      - name: Ruff format
-        run: uv run ruff format --check .
-      - name: Mypy
-        run: uv run python -m mypy
-      - name: Pytest
-        run: uv run python -m pytest --cov=auspice --cov=apps/api/app --cov-report=term-missing --cov-report=xml
+
+      - name: Schema has no pending drift
+        # The schema module is the source of truth and the migrations are generated from it. Drift here
+        # would surface later as a confusing query error rather than as a migration problem.
+        run: uv run alembic -c infra/alembic.ini check
+
+      - name: Registry and labels are valid
+        run: |
+          uv run auspice registry validate
+          uv run auspice labels validate
+
+      - name: Test
+        run: uv run pytest -q --cov --cov-report=term-missing --cov-report=xml
+
+      - name: The kill test reports its honest state
+        # It prints INSUFFICIENT DATA below the sample size floors and exits zero. This step exists so
+        # that state is visible in every build rather than discovered when someone asks for the number.
+        run: uv run auspice eval sufficiency
+
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: python-coverage
+          name: coverage
           path: coverage.xml
+          if-no-files-found: ignore
+
       - name: Print database logs
         if: failure()
         run: docker logs auspice-db-ci || true
+
       - name: Remove database
         if: always()
         run: docker rm --force auspice-db-ci || true
 
   web:
     name: web
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
           cache: npm
-      - run: npm ci
-      - name: Audit production dependencies
-        run: npm run audit:check
-      - name: Shared type derivation check
+
+      - name: Install
+        run: npm ci
+
+      - name: Install uv
+        # The generated types check regenerates the OpenAPI document from the FastAPI application, so
+        # this job needs Python as well as Node. Cheaper than booting the API over HTTP just to have it
+        # describe itself, and it cannot drift from the code the way a running server's document can.
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Python dependencies
+        run: uv sync --all-extras
+
+      - name: Dependency audit
+        # Fails on anything new. Assessed advisories are recorded in scripts/check-audit.mjs with a
+        # reason and a review date, so the report is neither muted nor permanently ignored.
+        run: node scripts/check-audit.mjs
+
+      - name: Generated types match the API
+        # packages/shared-types is generated, so it is only a single source of truth if the derivation is
+        # checked. Without this a route can change its response shape while the web application keeps
+        # compiling against the old one, and the mismatch surfaces at runtime as an undefined field.
         run: npm run types:check
-      - name: ESLint
-        run: npm run lint
-      - name: TypeScript
+
+      - name: Design tokens all resolve
+        # CSS resolves an undefined custom property to nothing, so a token name that does not exist renders
+        # as a missing colour or a default font size and passes lint, types and the build. Three did.
+        run: npm run check:tokens --workspace apps/web
+
+      - name: Lint
+        run: npm run lint --workspace apps/web
+
+      - name: Type check
         run: npm run typecheck
-      - name: Vitest
+
+      - name: Install Playwright browser
+        # Chromium only, and without system dependencies. The unit project below launches no browser, but
+        # Playwright resolves its browser registry at startup and a missing download is an error rather
+        # than a skip.
+        run: npx playwright install chromium
+        working-directory: apps/web
+
+      - name: Unit tests
+        # apps/web/tests/unit holds the parser tests: the pasted site list reader and the published
+        # document reader. They existed and never ran automatically, because this job never invoked
+        # playwright at all. A test that is not wired into CI is a test that stops being true.
+        #
+        # No server is started. playwright.config.ts reads the requested projects and omits its
+        # webServer block when only the unit project is selected, so this needs no environment override.
+        # It previously set PLAYWRIGHT_BASE_URL to a port nothing was listening on, purely as a way to
+        # switch the server off, which would have sent a stray page.goto to a dead socket.
         run: npm run test --workspace apps/web
-      - name: Next production build
+        working-directory: .
+
+      - name: Build
         run: npm run build --workspace apps/web
+        env:
+          # The public pages read the API at build time. Without it they render their unavailable state,
+          # which still has to compile and is worth exercising.
+          NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8000
+
+      - name: Performance budget
+        # Measured gzipped. See the script for why the specification's 100 kB figure was amended.
+        run: npm run budget --workspace apps/web
 
   visual:
     name: visual regression
+    # windows-latest, and this is a decision rather than a preference. Playwright suffixes a snapshot
+    # filename with the platform it was recorded on, and the committed baselines under
+    # tests/visual/design-system.spec.ts-snapshots/ are all -win32.png. On ubuntu Playwright would look for
+    # -linux.png, find nothing, and fail with a missing snapshot, which reads as a regression and is not
+    # one. Running where the baselines were made is the only way this gate means anything without
+    # regenerating six images on a platform nobody develops on.
+    #
+    # The alternative, committing a second set of Linux baselines, doubles the images to review on every
+    # deliberate design change. If the team moves to Linux development this job moves with it.
     runs-on: windows-latest
     timeout-minutes: 40
     env:
       NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8000
       AUSPICE_CRAWLER_CONTACT: ci@auspice.example
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - uses: astral-sh/setup-uv@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+          cache-dependency-glob: uv.lock
+
       - name: Cache PostgreSQL toolchain
         uses: actions/cache@v4
         with:
@@ -150,18 +250,26 @@ jobs:
             .tools/cache
             .tools/pgsql
           key: windows-postgres-${{ hashFiles('infra/scripts/bootstrap-postgres.ps1') }}
+
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
           cache: npm
+
       - name: Install Python dependencies
         run: uv sync --all-extras --dev
-      - run: npm ci
-      - name: Install Chromium
-        run: npm --prefix apps/web exec playwright install --with-deps chromium
+
+      - name: Install
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install chromium
+        working-directory: apps/web
+
       - name: Start PostgreSQL
         shell: pwsh
         run: infra/scripts/bootstrap-postgres.ps1
+
       - name: Migrate and load deterministic data
         shell: pwsh
         run: |
@@ -171,6 +279,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           uv run auspice labels load
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Start API
         shell: pwsh
         run: |
@@ -184,6 +293,7 @@ jobs:
             -RedirectStandardError $stderr `
             -PassThru
           Add-Content -Path $env:GITHUB_ENV -Value "AUSPICE_API_PID=$($process.Id)"
+
       - name: Wait for API
         shell: pwsh
         run: |
@@ -205,11 +315,22 @@ jobs:
             Get-Content (Join-Path $env:RUNNER_TEMP 'auspice-api.stderr.log') -Tail 200 -ErrorAction SilentlyContinue
             throw 'API did not become healthy within 120 seconds'
           }
-      - name: Build application
+
+      - name: Build
         run: npm run build --workspace apps/web
-      - name: Run visual suite
+        env:
+          # The visual suite serves the production build. The live API is already healthy, so these pages
+          # are built from the registry and label data the spatial tests exercise.
+          NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8000
+
+      - name: Visual regression
+        # playwright.config.ts starts `npm run start` itself when PLAYWRIGHT_BASE_URL is unset, so no
+        # web server needs starting here. FastAPI remains live for the server-side page requests, coordinate
+        # lookups and vector tiles exercised by the complete suite.
         run: npm run test:visual --workspace apps/web
-      - name: Upload visual diagnostics
+        working-directory: .
+
+      - name: Upload the report when it fails
         if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -220,6 +341,9 @@ jobs:
             ${{ runner.temp }}/auspice-api.stdout.log
             ${{ runner.temp }}/auspice-api.stderr.log
             var/pg.log
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Stop API and PostgreSQL
         if: always()
         shell: pwsh
@@ -236,17 +360,30 @@ jobs:
               & $pgCtl -D $dataDir -m fast -w stop
             }
           }
+          exit 0
 
   writing:
     name: writing rules
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
+
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
-      - run: python tools/check_writing.py
-      - run: python tools/check_line_endings.py
-      - name: Credential-shaped value scan
-        run: python tools/check_no_secrets.py
+          # Full history, because check_line_endings.py reads stored blobs at HEAD and a shallow
+          # checkout that omitted them would pass by having nothing to look at.
+          fetch-depth: 1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: No em dashes, no banned vocabulary, no emoji
+        # The mechanical part of the writing rules is testable, so it is tested rather than remembered.
+        run: uv run --no-project python tools/check_writing.py
+
+      - name: Line endings match the declared policy
+        # .gitattributes declares `* text=auto eol=lf`, and declaring it is not the same as it holding:
+        # git will not convert a blob already stored as CRLF. Two files survived the repository wide
+        # renormalisation for that reason and were found by the fresh clone gate rather than by review,
+        # because the symptom is a diff that rewrites a whole file rather than an error.
+        run: uv run --no-project python tools/check_line_endings.py
