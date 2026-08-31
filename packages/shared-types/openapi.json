@@ -20,6 +20,11 @@
             "title": "Abstained",
             "type": "integer"
           },
+          "anchor": {
+            "additionalProperties": true,
+            "title": "Anchor",
+            "type": "object"
+          },
           "answered": {
             "title": "Answered",
             "type": "integer"
@@ -97,6 +102,7 @@
           "abstained",
           "brier_score",
           "chain",
+          "anchor",
           "misses",
           "reliability",
           "kill_test",

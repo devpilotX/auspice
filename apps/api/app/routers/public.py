@@ -84,6 +84,8 @@ def accuracy(conn: Db, response: Response) -> AccuracyResponse:
         )
     )
 
+    anchor_status = ledger.anchor_status(conn, limit=5)
+
     return AccuracyResponse(
         published=record["published"],
         resolved=record["resolved"],
@@ -92,6 +94,7 @@ def accuracy(conn: Db, response: Response) -> AccuracyResponse:
         abstained=record["abstained"],
         brier_score=record["brier_score"],
         chain=record["chain"],
+        anchor={**anchor_status.as_dict(), "statement": anchor_status.statement()},
         misses=record["misses"],
         reliability=None,
         kill_test=dict(kill_test) if kill_test else None,

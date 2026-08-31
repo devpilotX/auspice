@@ -2,6 +2,16 @@
 
 from __future__ import annotations
 
+from auspice.ledger.anchor import (
+    Anchor,
+    AnchorError,
+    AnchorStatus,
+    HttpAnchor,
+    Receipt,
+    anchor_head,
+    anchor_status,
+    get_anchor,
+)
 from auspice.ledger.chain import (
     GENESIS_HASH,
     LedgerEntry,
@@ -26,11 +36,19 @@ from auspice.ledger.chain import (
 
 __all__ = [
     "GENESIS_HASH",
+    "Anchor",
+    "AnchorError",
+    "AnchorStatus",
+    "HttpAnchor",
     "LedgerEntry",
+    "Receipt",
     "VerificationReport",
+    "anchor_head",
+    "anchor_status",
     "canonical_json",
     "daily_root",
     "export_jsonl",
+    "get_anchor",
     "grade",
     "hash_payload",
     "head",

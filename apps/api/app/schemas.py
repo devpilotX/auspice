@@ -253,6 +253,14 @@ class AccuracyResponse(BaseModel):
     abstained: int
     brier_score: float | None
     chain: dict[str, Any]
+    anchor: dict[str, Any]
+    """External anchoring of the chain head, and a sentence describing it in words.
+
+    Carried on this page rather than left to the documentation, because the chain field above proves
+    internal consistency only. We hold the whole ledger and could rebuild and rehash it, so without an
+    external attestation the chain does not prove when it came into existence. A page that showed the
+    chain and said nothing about anchoring would invite a reader to assume the stronger guarantee.
+    """
     misses: list[dict[str, Any]]
     reliability: dict[str, Any] | None
     kill_test: dict[str, Any] | None

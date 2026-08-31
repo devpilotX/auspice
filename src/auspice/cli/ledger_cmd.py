@@ -18,6 +18,99 @@ from auspice.domain import Outcome
 app = typer.Typer(no_args_is_help=True, help="The hash committed public prediction ledger.")
 
 
+@app.command("anchor")
+def anchor() -> None:
+    """Submit the current chain head to the configured external timestamping service.
+
+    The hash chain proves internal consistency: no entry can be altered without breaking every hash
+    after it. It cannot prove the chain existed before today, because we hold all of it and could
+    rebuild and rehash it. An anchor puts the head in a third party's hands at a known time, which is
+    what makes that impossible.
+
+    The chain is verified before anything is submitted. Anchoring a broken chain would put it beyond
+    dispute, which is the opposite of the point.
+    """
+    from auspice import ledger
+    from auspice.errors import LedgerTamperError, StageUnavailableError
+
+    heading("Anchoring the ledger head")
+    try:
+        with transaction() as conn:
+            receipt = ledger.anchor_head(conn)
+    except StageUnavailableError as exc:
+        fail(str(exc))
+    except LedgerTamperError as exc:
+        fail(str(exc))
+    except ledger.AnchorError as exc:
+        fail(str(exc))
+
+    render_table(
+        [
+            {"field": "service", "value": receipt.service},
+            {"field": "digest submitted", "value": receipt.submitted_digest},
+            {"field": "receipt sha256", "value": receipt.receipt_sha256},
+            {"field": "receipt bytes", "value": receipt.receipt_bytes},
+            {"field": "received at", "value": receipt.received_at},
+        ],
+        columns=("field", "value"),
+    )
+    console.print()
+    ok("the head is anchored and the receipt is recorded against that entry")
+    note(
+        "What this proves: the digest was submitted and a receipt came back. Verifying the receipt "
+        "cryptographically needs the standard client for that service, and every input to that check "
+        "is in the published export."
+    )
+
+
+@app.command("anchors")
+def anchors() -> None:
+    """What is anchored externally and what is not.
+
+    An unanchored ledger is an honest state, and the accuracy page says so rather than omitting the
+    subject. This is the same information for an operator.
+    """
+    from auspice import ledger
+
+    heading("External anchoring")
+    with transaction() as conn:
+        status = ledger.anchor_status(conn)
+
+    render_table(
+        [{"field": key, "value": value} for key, value in status.as_dict().items()],
+        columns=("field", "value"),
+    )
+    console.print()
+
+    if status.anchors:
+        render_table(
+            [
+                {
+                    "seq": a["seq"],
+                    "anchored at": (a["anchored_at"] or "")[:19],
+                    "digest matches": "yes" if a["digest_matches_entry"] else "NO",
+                    "receipt": (a["receipt_sha256"] or "")[:16],
+                }
+                for a in status.anchors
+            ],
+            numeric=("seq",),
+            title="Anchors held, newest first",
+        )
+        console.print()
+        broken = [a for a in status.anchors if not a["digest_matches_entry"]]
+        if broken:
+            fail(
+                f"{len(broken)} stored anchor reference(s) do not describe the entry they sit on. "
+                "That is a defect in how they were written, not evidence of tampering, and it means "
+                "those receipts prove nothing about those entries."
+            )
+
+    console.print(f"  {status.statement()}")
+    if not status.configured:
+        console.print()
+        note("Set AUSPICE_LEDGER_ANCHOR_URL to anchor. Until then the guarantee is internal only.")
+
+
 @app.command("verify")
 def verify() -> None:
     """Recompute the whole hash chain and report the first sequence that does not check out."""

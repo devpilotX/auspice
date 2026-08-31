@@ -36,7 +36,9 @@
 *.mp3 binary
 *.m4a binary
 
-# Generated, and reviewed as a whole rather than line by line.
+# Generated, and reviewed as a whole rather than line by line. The TypeScript under
+# packages/shared-types/src/generated/ is not tracked at all: it is rebuilt from openapi.json, which is,
+# and scripts/check-types-current.mjs is what keeps the two in step.
 uv.lock linguist-generated=true
 package-lock.json linguist-generated=true
-packages/shared-types/src/generated.ts linguist-generated=true
+packages/shared-types/openapi.json linguist-generated=true
