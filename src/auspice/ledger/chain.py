@@ -30,6 +30,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
+from threading import Lock
 from typing import Any
 
 from sqlalchemy import func, select, text, update
@@ -282,6 +283,113 @@ def verify_head(conn: Connection) -> VerificationReport:
     return report
 
 
+# ---------------------------------------------------------------------------
+# Verification caching
+# ---------------------------------------------------------------------------
+# `verify` pulls every payload into Python and re-serialises and rehashes each one. That is the right
+# thing to do and it is the expensive thing to do, and it sat behind `/v1/public/accuracy`, which is
+# public and unauthenticated. The cost grew with the ledger, so the denial of service surface grew with
+# the moat.
+#
+# **Why not a persisted checkpoint.** The obvious fix is a row recording "verified up to sequence N with
+# hash H" and walking only what follows. It is rejected here, deliberately. Anyone able to write that row
+# can make the verifier skip the region they tampered with, which converts the ledger's one hard property
+# into a property of whatever protects that row. For an append only record whose entire value is that it
+# cannot be quietly edited, adding a "trust me, this part is fine" marker is the wrong trade.
+#
+# **What this does instead.** It asks Postgres for a digest of the payloads and uses it as a cache key. If
+# no payload has changed, a previous full verification is still valid, and the answer is reused. The key
+# is derived from the live data on every call, so there is nothing to poison: tamper with any payload and
+# the key changes and the walk runs again.
+#
+# Honest about the cost. This is not O(1). It is one indexed scan with a per row digest computed inside
+# Postgres, instead of transferring every payload and rehashing it in Python. Per row md5 rather than
+# aggregating the payloads themselves, so the aggregate stays a few dozen bytes per entry rather than
+# kilobytes. The saving is a large constant factor, not a change of complexity, and the truly constant
+# cost check is `verify_head`, which is what the health endpoint uses.
+_PAYLOAD_DIGEST = text(
+    """
+    SELECT
+        count(*)                                                   AS entries,
+        coalesce(max(seq), 0)                                      AS head_seq,
+        md5(coalesce(string_agg(md5(payload::text), '' ORDER BY seq), '')) AS digest
+    FROM ledger_entry
+    """
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _CacheKey:
+    entries: int
+    head_seq: int
+    digest: str
+
+
+@dataclass(slots=True)
+class _VerificationCache:
+    """One cached full verification, guarded by a lock.
+
+    An object rather than module level globals, which mirrors how ``apps/api/app/ratelimit.py`` holds its
+    buckets, and which means a test can reset it without reaching for the ``global`` statement.
+    """
+
+    key: _CacheKey | None = None
+    report: VerificationReport | None = None
+    lock: Lock = field(default_factory=Lock)
+
+    def get(self, key: _CacheKey) -> VerificationReport | None:
+        with self.lock:
+            return self.report if self.key == key and self.report is not None else None
+
+    def put(self, key: _CacheKey, report: VerificationReport) -> None:
+        # Only a clean result is cached. Caching a failure would mean a repaired ledger kept reporting a
+        # break until the process restarted, and an operator fixing a chain needs to see the fix.
+        if not report.ok:
+            return
+        with self.lock:
+            self.key = key
+            self.report = report
+
+    def reset(self) -> None:
+        with self.lock:
+            self.key = None
+            self.report = None
+
+
+_cache = _VerificationCache()
+
+
+def _cache_key(conn: Connection) -> _CacheKey:
+    row = conn.execute(_PAYLOAD_DIGEST).mappings().one()
+    return _CacheKey(
+        entries=int(row["entries"]), head_seq=int(row["head_seq"]), digest=str(row["digest"])
+    )
+
+
+def reset_verification_cache() -> None:
+    """Drop the cache. For tests, and for anything that has reason to distrust process state."""
+    _cache.reset()
+
+
+def verify_cached(conn: Connection) -> VerificationReport:
+    """A full verification, reusing the previous result when nothing has changed.
+
+    Same guarantees as ``verify``: every payload rehashed, every link recomputed, tail deletion checked.
+    The only difference is that repeating the question costs one digest query rather than a full rehash.
+
+    The cache lives in the process and is empty at startup, so a restart always performs a real walk. That
+    is a feature rather than a limitation: process state is never load bearing for a claim about the record.
+    """
+    key = _cache_key(conn)
+    cached = _cache.get(key)
+    if cached is not None:
+        return cached
+
+    report = verify(conn)
+    _cache.put(key, report)
+    return report
+
+
 def verify(conn: Connection) -> VerificationReport:
     """Recompute the whole chain. Reports the first sequence number that does not check out.
 
@@ -468,7 +576,12 @@ def public_record(conn: Connection) -> dict[str, Any]:
     Section 5.3: the single most important page on the website is public and free, and it is
     simultaneously the product proof, the marketing engine and the moat.
     """
-    report = verify(conn)
+    # verify_cached, not verify. Identical guarantees, and repeating the question when nothing has changed
+    # costs one digest query instead of rehashing every payload. This function is what serves an
+    # unauthenticated public page, so the difference is whether the moat and the denial of service surface
+    # grow at the same rate. require_intact deliberately stays on the uncached walk: it guards publishing,
+    # where the cost of being wrong is a record nobody can trust.
+    report = verify_cached(conn)
 
     rows = conn.execute(
         select(

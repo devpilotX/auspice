@@ -16,8 +16,10 @@ from auspice.ledger.chain import (
     public_record,
     publish,
     require_intact,
+    reset_verification_cache,
     unresolved_older_than,
     verify,
+    verify_cached,
     verify_head,
 )
 
@@ -35,7 +37,9 @@ __all__ = [
     "public_record",
     "publish",
     "require_intact",
+    "reset_verification_cache",
     "unresolved_older_than",
     "verify",
+    "verify_cached",
     "verify_head",
 ]
