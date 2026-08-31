@@ -11,6 +11,15 @@ on:
     branches: [main, master]
   pull_request:
   workflow_dispatch:
+    inputs:
+      update_snapshots:
+        description: >-
+          Re-record the Windows visual baselines against the committed data seed and commit them to
+          this branch. Every baseline is -win32.png and nobody develops on Windows, so this is the
+          only way to re-record them without a Windows machine. Read the data state diagnostic in the
+          visual job first and confirm the pages are right before using it.
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -228,6 +237,10 @@ jobs:
     # deliberate design change. If the team moves to Linux development this job moves with it.
     runs-on: windows-latest
     timeout-minutes: 40
+    permissions:
+      # Write, only so the update_snapshots dispatch can commit re-recorded baselines back. Nothing on
+      # the pull request path writes anything.
+      contents: write
     env:
       NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8000
       AUSPICE_CRAWLER_CONTACT: ci@auspice.example
@@ -394,7 +407,38 @@ jobs:
           npm run build --workspace apps/web
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-          npm run test:visual --workspace apps/web
+          if ('${{ inputs.update_snapshots }}' -eq 'true') {
+            Write-Host 'Re-recording the visual baselines against the data state printed above.'
+            npm run test:visual --workspace apps/web -- --update-snapshots
+          } else {
+            npm run test:visual --workspace apps/web
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Commit the re-recorded baselines
+        # Only on the explicit dispatch. The pull request path never writes.
+        if: ${{ inputs.update_snapshots }}
+        shell: pwsh
+        run: |
+          & git add -- apps/web/tests/visual
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          & git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host 'The re-recorded baselines are byte identical to the committed ones. Nothing to commit.'
+            exit 0
+          }
+
+          & git diff --cached --stat
+          & git `
+            -c user.name='github-actions[bot]' `
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' `
+            commit `
+            -m 'test: re-record the visual baselines against the committed data seed' `
+            -m 'Recorded on 2026-08-27 against a developer database that held two published ledger entries. CI seeds only the committed registry and labels, so the accuracy page reports an empty record and the Loudoun profile renders shorter. The data state diagnostic in this job confirms both pages render correctly for that seed, so the baselines are re-recorded against it and the gate becomes reproducible from the repository alone.'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          & git push origin HEAD:${{ github.ref_name }}
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload the report when it fails
