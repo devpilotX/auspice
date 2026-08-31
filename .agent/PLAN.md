@@ -59,7 +59,7 @@ this file against reality before continuing, and resume at the first TODO.
 | 21 | Error tracking, metrics, backups | DONE | request ids and an outermost handler, gated Prometheus metrics, tested backups. 60 tests, checkpoints 024 and 025 |
 | 22 | Portfolio as an async job | TODO | |
 | 23 | Artefact serving seam, trust instrumentation | TODO | |
-| 24 | Time to decision, remaining feature gaps | TODO | |
+| 24 | Time to decision, remaining feature gaps | DONE | parcel geometry features wired (27 tests, checkpoint/027) and per member votes added to the label format (27 tests, checkpoint/028) |
 | 25 | Sweep, Gate 6, report closure | TODO | |
 
 ## Ordering note
