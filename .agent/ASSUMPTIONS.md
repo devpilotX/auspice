@@ -57,3 +57,20 @@ A-007: AUDIT_REPORT.md lives at the repository root and is therefore outside the
        standard is a report nobody trusts. This is a choice, not an exemption being exploited.
        Reverse by: add "AUDIT_REPORT.md" to INCLUDE_GLOBS in tools/check_writing.py. One line.
 ```
+
+A-015: Left app.deps.get_connection opening a writable transaction after ADR-002 removed the write
+       from the scoring path. A read only connection, and later a hot standby for scoring, are now
+       possible and were deliberately not done in the same checkpoint, so a rollback can separate the
+       two behaviours.
+       Reverse by: nothing to reverse. To go further, change 	ransaction() to a read only variant in
+       get_connection and add a test that a write through it fails. About 20 lines, 30 min.
+
+A-016: Deferred plan Task 12, the brand rename, to the end of the run rather than doing it in plan
+       order. It is pure copy, it depends on a trademark clearance opinion the operator does not yet
+       have (B-004), and ADR-001's own reversal trigger contemplates the name changing. Doing it after
+       every feature exists is one pass over final copy instead of two, and if the clearance opinion
+       rejects Permission Bureau only one pass is redone.
+       Reverse by: do it now instead. The surface is small and measured: 4 strings in
+       apps/web/src/app/layout.tsx, 4 in published-page.tsx, 1 message in the report page, prose
+       in 5 docs files, the README, and 6 brand SVG files. Environment variable and package names are
+       Task 13, not Task 12.

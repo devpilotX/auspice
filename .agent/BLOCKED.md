@@ -42,6 +42,49 @@ inventing facts, which is correct. The golden fixtures in `tests/golden/` exist 
 day a key exists. Until then the 400 label target is reachable only by hand, at the 30 to 60 rows per
 day rate that `data/labels/README.md` cites.
 
+## B-005: Decide the correct adoption date for the Linn County moratorium row.
+
+Finding NEW-03. The row `linn-data-center-moratorium-2026` records `adopted_on: 2026-04-08` and
+`effective_on: 2026-04-08`. Its primary citation,
+`https://www.linncountyiowa.gov/m/newsflash/Home/Detail/4487`, describes a different event: posted
+1 July 2026, "has approved an 18-month moratorium on accepting new applications to rezone property to
+the EU-3 Large-Scale Data Center Zoning District in unincorporated Linn County", "takes effect
+immediately", and it refers to the February 2026 ordinance as a separate earlier action. Nothing on the
+page mentions 8 April.
+
+Where 8 April 2026 does appear verbatim is the Newton County resolution cited two rows above, as the
+expiry of Newton's earlier emergency moratorium. That is a plausible route for the value to have
+crossed rows during hand labelling, and it is a hypothesis rather than a conclusion.
+
+What the agent did: nothing to the dates. Repairing the quote alone would make the citation verify and
+admit the row to training with a date its own source contradicts. An unverified row is excluded by the
+training query; a verified one is not. So the safe state is the current one, and the row stays out of
+training until the date is settled.
+
+What the operator has to decide: whether the moratorium was adopted around 1 July 2026 and the date
+should be corrected, or whether there was an earlier April action and the citation is simply the wrong
+page for this row. Both are one edit. Neither is the agent's to guess under the rule that no label is
+fabricated.
+
+Once decided, `auspice labels quote --url <the right page> --find <a phrase>` produces a verbatim quote
+that cannot fail verification.
+
+## B-006: Two cited sources cannot be verified because they render client side.
+
+Finding NEW-04. `wsbtv.com` parses to 219 characters and `cbs2iowa.com` to 7636, both of which are
+application shell rather than article text. No transcription of any quote from either can be located,
+so those citations stay unverified permanently as things stand.
+
+This does not currently block a row: the Newton row now carries a verified primary citation alongside
+the unverifiable WSB-TV one, and the training query needs only one verified item. It will block rows
+whose only source is a client rendered news site.
+
+The mechanism to fix it already exists in the repository. `pipeline/adapters/` has a Playwright path for
+pages that need JavaScript. `pipeline/extract/verify.py` does not use it. Routing verification through
+that path when a fetch parses to implausibly little text is the fix, and it is engineering rather than
+an operator decision, so it is recorded here only because it explains why two citations will stay
+unverified until it is done.
+
 ## B-004: Two items that are outside software entirely.
 
 From the audit, recorded so they are not lost:

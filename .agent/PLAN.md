@@ -31,20 +31,20 @@ this file against reality before continuing, and resume at the first TODO.
 | 8 | `healthz` reports a degraded database | DONE | three defects; proved tests fail against the original |
 | 9 | Move blocking work off the event loop | DONE | 12 handlers, route table guard, proved by reverting one |
 | 10 | Bound the cost of unauthenticated endpoints | DONE | three parts: verify_head, digest keyed cache, streamed export |
-| 11 | Cap scoring savepoints, drop unused `slowapi` | TODO | next, closes Phase C |
+| 11 | Remove the scoring savepoint, drop unused `slowapi` | DONE | ADR-002. Savepoint removed rather than capped, 9 tests, checkpoint/020 |
 
 ## Phase D, rename
 
 | # | Task | Status | Evidence |
 |---|---|---|---|
-| 12 | Brand surface to Permission Bureau | TODO | ADR-001 |
+| 12 | Brand surface to Permission Bureau | DEFERRED to last | ADR-001. See A-016: it is pure copy, it depends on a trademark opinion the operator does not have, and doing it after every feature exists is one pass over final copy instead of two |
 | 13 | Code namespace rename | PARKED | A-002, deliberately last and parkable |
 
 ## Phase E, the binding constraint
 
 | # | Task | Status | Evidence |
 |---|---|---|---|
-| 14 | Labelling console | TODO | highest leverage task in the plan |
+| 14 | Labelling console | DONE | `labels quote` and `labels add`, 32 tests, exercised against a live county source, checkpoint/021 |
 | 15 | Extraction accuracy against the golden set | PARKED | D-003, no key available |
 | 16 | Corpus backfill for the twelve counties | TODO | |
 | 17 | Start the ledger accruing | TODO | |

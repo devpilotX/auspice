@@ -264,9 +264,10 @@ instruments:
         kind: secondary
       - url: https://www.newtoncountyga.gov/DocumentCenter/View/7830/Resolution-R-040726b
         document_title: "Newton County Resolution R-040726b"
-        quote: "Newton County commissioners approve 2 moratoriums for data centers, convenience stores"
-        retrieved_on: 2026-08-27
-        kind: secondary
+        quote: "SO RESOLVED this 7th day of April, 2026, the public's health, safety, and welfare demanding it."
+        page: 2
+        retrieved_on: 2026-08-31
+        kind: primary
 
   - label_id: linn-data-center-moratorium-2026
     jurisdiction: us-ia-linn
