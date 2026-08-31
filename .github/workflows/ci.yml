@@ -287,10 +287,11 @@ jobs:
         run: |
           $stdout = Join-Path $env:RUNNER_TEMP 'auspice-api.stdout.log'
           $stderr = Join-Path $env:RUNNER_TEMP 'auspice-api.stderr.log'
-          $uv = (Get-Command uv).Source
+          $python = Join-Path $env:GITHUB_WORKSPACE '.venv\Scripts\python.exe'
           $process = Start-Process `
-            -FilePath $uv `
-            -ArgumentList @('run', 'uvicorn', 'app.main:app', '--app-dir', 'apps/api', '--host', '127.0.0.1', '--port', '8000') `
+            -FilePath $python `
+            -ArgumentList @('-m', 'uvicorn', 'app.main:app', '--app-dir', 'apps/api', '--host', '127.0.0.1', '--port', '8000') `
+            -WorkingDirectory $env:GITHUB_WORKSPACE `
             -RedirectStandardOutput $stdout `
             -RedirectStandardError $stderr `
             -PassThru
