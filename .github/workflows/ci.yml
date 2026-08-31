@@ -282,7 +282,10 @@ jobs:
           uv run auspice labels load
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Start API
+      - name: Build and visual regression
+        # Keep the API under the same PowerShell supervisor that consumes it. A detached child remained
+        # alive between Windows runner steps but stopped servicing loopback requests after its launch
+        # shell exited. The build and complete Playwright suite are unchanged and both fail this step.
         shell: pwsh
         run: |
           $stdout = Join-Path $env:RUNNER_TEMP 'auspice-api.stdout.log'
@@ -297,9 +300,6 @@ jobs:
             -PassThru
           Add-Content -Path $env:GITHUB_ENV -Value "AUSPICE_API_PID=$($process.Id)"
 
-      - name: Wait for API
-        shell: pwsh
-        run: |
           $probe = @'
           import http.client
           import sys
@@ -325,26 +325,18 @@ jobs:
           print(f"Last health probe error: {last_error}", file=sys.stderr)
           raise SystemExit(1)
           '@
-          $probe | python -
+          $probe | & $python -
           if ($LASTEXITCODE -ne 0) {
-            Get-Content (Join-Path $env:RUNNER_TEMP 'auspice-api.stdout.log') -Tail 200 -ErrorAction SilentlyContinue
-            Get-Content (Join-Path $env:RUNNER_TEMP 'auspice-api.stderr.log') -Tail 200 -ErrorAction SilentlyContinue
+            Get-Content $stdout -Tail 200 -ErrorAction SilentlyContinue
+            Get-Content $stderr -Tail 200 -ErrorAction SilentlyContinue
             throw 'API did not become healthy within 120 seconds'
           }
 
-      - name: Build
-        run: npm run build --workspace apps/web
-        env:
-          # The visual suite serves the production build. The live API is already healthy, so these pages
-          # are built from the registry and label data the spatial tests exercise.
-          NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8000
+          npm run build --workspace apps/web
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Visual regression
-        # playwright.config.ts starts `npm run start` itself when PLAYWRIGHT_BASE_URL is unset, so no
-        # web server needs starting here. FastAPI remains live for the server-side page requests, coordinate
-        # lookups and vector tiles exercised by the complete suite.
-        run: npm run test:visual --workspace apps/web
-        working-directory: .
+          npm run test:visual --workspace apps/web
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload the report when it fails
         if: failure()
