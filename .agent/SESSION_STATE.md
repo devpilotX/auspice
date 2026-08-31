@@ -10,23 +10,31 @@ was not verified it says so.
 
 | Thing | Value |
 |---|---|
-| Work merged to | `main` |
-| Branch that carried it | `agent/permission-bureau-20260830-172555`, merged then deleted |
-| Branch head at merge | `ddcd79701c015a53fbe5b3c258e111fd564afef8` |
+| Everything is on | `main`, at `d29a697baa7f444a3aa9502ef35980f2328d71cc` |
+| That commit is | the merge of pull request #1, authored by devpilotX |
 | `main` before the merge | `2d8efdf7fc2b7a7cf26dfb2e5c74c0d232980060` |
-| Pull request | #1, merged |
-| CI | all four jobs green on `ddcd7970` before the merge, run 33389229249 |
+| Branch that carried the work | `agent/permission-bureau-20260830-172555`, merged at `ddcd7970`. Still present. Delete it from the pull request page if you want it gone; every commit on it is now reachable from `main` |
+| CI on `main` | all four jobs green, run 33423519638 |
 
-The last verification before merging: run `33389229249`, event `pull_request`, conclusion `success`.
-python `99478740301`, web `99478740512`, writing rules `99478740537`, visual regression `99478740460`.
-The visual log reads `68 passed (43.5s)` with no retries. The python log reads
-`624 passed, 2 warnings in 44.38s` with nothing skipped, and coverage `TOTAL ... 49%`.
+**`main` had never had a green pipeline before this.** Its only two earlier runs, 33057460017 and
+33061610294, both concluded `failure`. Run 33423519638 is the first green one.
+
+Evidence for that run, read job by job: python `99591417312` success, web `99591417543` success, writing
+rules `99591417618` success, visual regression `99591417466` success with the `Build and visual
+regression` step succeeding and the baseline commit step correctly skipped. The branch was independently
+green first, on run 33389229249 at `ddcd7970`, where the visual log read `68 passed (43.5s)` with no
+retries and pytest read `624 passed, 2 warnings in 44.38s` with nothing skipped.
+
+One useful side effect: the Windows PostgreSQL cache is now saved at `main` scope. Branch scoped caches
+cannot be read from other refs, which is why the first `main` run spent 63 seconds on `Start PostgreSQL`
+instead of 9. Every later run on any branch can read it.
 
 ## Your local checkout is behind. Fix this first.
 
 At the time of writing, local `HEAD` was `c25aa4ba9fd274af8398b6faece8ceb35e627091`, which is ten
-commits behind what was pushed. The local `.github/workflows/ci.yml` is the old 262 line version with
-no `AUSPICE_API_KEYS` and no `update_snapshots`. Editing it before pulling would revert the CI repair.
+commits behind what was pushed, and it is still sitting on the agent branch. The local
+`.github/workflows/ci.yml` is the old 262 line version with no `AUSPICE_API_KEYS` and no
+`update_snapshots`. Editing it before pulling would revert the CI repair.
 
 ```bash
 git fetch origin
@@ -61,6 +69,7 @@ cause at a time.
 | `98ae88e4` | added the `update_snapshots` workflow_dispatch input |
 | `cf7a4073` | the re-recorded baselines, committed by `github-actions[bot]` |
 | `ddcd7970` | `.agent/VISUAL_GATE.md` |
+| `364a35e9` | this document |
 
 Nothing was weakened to achieve this. `maxDiffPixelRatio` is still 0.002, no test was removed or
 skipped, and `src/auspice/models/eval/thresholds.py` is byte identical to what was on `main`
@@ -83,18 +92,18 @@ skipped, and `src/auspice/models/eval/thresholds.py` is byte identical to what w
 
 Diagnosed, not guessed. Two independent causes.
 
-**The graph counts the default branch only.** Before the merge all 57 commits were on a branch, so none
+**The graph counts the default branch only.** Before the merge all 58 commits were on a branch, so none
 of them could appear. The merge fixes this half.
 
 **Forty seven of the commits are authored `Auspice <build@auspice.local>`, which is linked to no GitHub
 account.** Querying `main` for the commit `author` object returned no author and no committer object at
 all, which is GitHub saying it cannot match that email to a user. The same query on the branch returned
-`author.login: devpilotX` for the ten commits made through the API.
+`author.login: devpilotX` for the eleven commits made through the API.
 
-So after the merge, ten commits credit you and forty seven do not. `build@auspice.local` can never be
-verified because `.local` cannot receive mail, so adding it to your account is not available. The only
-way to attribute those forty seven is rewriting history, which changes every SHA and needs a force
-push. That was not done and needs a deliberate decision.
+So now that it is merged, eleven commits credit you and forty seven do not. `build@auspice.local` can
+never be verified because `.local` cannot receive mail, so adding it to your account is not available.
+The only way to attribute those forty seven is rewriting history, which changes every SHA and needs a
+force push. That was not done and needs a deliberate decision.
 
 Merge commits are excluded from the Contributors graph, so the merge commit itself adds nothing.
 
