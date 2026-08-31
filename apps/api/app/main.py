@@ -16,17 +16,18 @@ record that cannot be trusted.
 
 from __future__ import annotations
 
+import secrets
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from app import ratelimit
+from app import observability, ratelimit
 from app.routers import public, score, tiles
 from app.schemas import HealthResponse
 from app.security import get_key_ring
@@ -40,11 +41,20 @@ log = get_logger(__name__, _stage="api")
 
 DISCLAIMER = "Probabilistic opinion, not legal advice. See /v1/public/methodology."
 
+# One registry per process, created at import so it survives the lifespan and is importable by tests.
+# Counters are in process and reset on restart, which is what a Prometheus scrape expects and is
+# honest about what one worker knows. The deployment runs a single uvicorn worker because the rate
+# limiter is in process, so there is no aggregation problem to solve yet.
+METRICS = observability.Metrics()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     key_ring = get_key_ring()
+
+    # Before anything that can fail, so a failure during startup is itself reported.
+    tracking = observability.init_error_tracking()
 
     if key_ring.is_open and settings.env is not Environment.development:
         raise RuntimeError("AUSPICE_API_KEYS is empty outside development. The API is not public.")
@@ -71,6 +81,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         serving=models.primary_kind,
         decisions=models.dataset.decided.height,
         environment=settings.env.value,
+        error_tracking=tracking,
+        metrics_endpoint=bool(settings.metrics_token),
     )
     for note in models.notes or []:
         log.warning("serving note", note=note)
@@ -123,22 +135,68 @@ async def rate_limit(request: Request, call_next: Any) -> Any:
 
 @app.middleware("http")
 async def add_standard_headers(request: Request, call_next: Any) -> Any:
-    """Stamp every response with the version, the disclaimer and the data date.
+    """Stamp every response with the version, the disclaimer, the data date and a request id.
 
     Section 8.9: never present a score without its interval and its data date. A header is not a
     substitute for the field inside the object, and it is a second place a consumer can read it from
     when they are looking at a raw response.
+
+    The request id is bound to the structured logger here rather than in a separate middleware, so
+    every log line emitted while handling this request carries it without any handler having to pass
+    it along. It is cleared in a finally block, because contextvars outlive the request in an event
+    loop worker and a leaked id would attach this request's identifier to the next one.
     """
     started = time.perf_counter()
-    response = await call_next(request)
+    request_id = observability.new_request_id(request.headers.get(observability.REQUEST_ID_HEADER))
+    request.state.request_id = request_id
+    observability.bind_request(request_id, method=request.method, path=request.url.path)
+    try:
+        response = await call_next(request)
+    finally:
+        observability.clear_request()
+
+    elapsed = time.perf_counter() - started
+    response.headers[observability.REQUEST_ID_HEADER] = request_id
     response.headers["X-Auspice-Version"] = __version__
     response.headers["X-Auspice-Disclaimer"] = DISCLAIMER
     models = getattr(request.app.state, "models", None)
     if models is not None and models.trained_at is not None:
         response.headers["X-Auspice-Data-As-Of"] = models.trained_at.date().isoformat()
         response.headers["X-Auspice-Serving-Model"] = models.primary_kind
-    response.headers["X-Auspice-Duration-Ms"] = f"{(time.perf_counter() - started) * 1000:.1f}"
+    response.headers["X-Auspice-Duration-Ms"] = f"{elapsed * 1000:.1f}"
+    METRICS.observe(
+        route=observability.route_template(request),
+        status=response.status_code,
+        seconds=elapsed,
+    )
     return response
+
+
+@app.exception_handler(Exception)
+async def unhandled(request: Request, exc: Exception) -> JSONResponse:
+    """The outermost handler. Every 500 gets logged with an identifier a customer can quote.
+
+    Without this an unexpected exception produced a traceback on stderr, a 500 with no body a caller
+    could act on, and nothing to join the two. Two simultaneous failures were indistinguishable.
+
+    Keeping the message generic is deliberate. An identifier is what lets an operator find the
+    traceback, and returning the exception text would leak internals to an unauthenticated caller.
+    """
+    request_id = getattr(request.state, "request_id", "unknown")
+    route = observability.route_template(request)
+    METRICS.record_error(type(exc).__name__)
+    observability.capture(exc, request_id=request_id, route=route)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": (
+                "Something failed inside this service. The failure is recorded against the request "
+                "identifier below. Quote it and we can find exactly what happened."
+            ),
+            "request_id": request_id,
+        },
+        headers={observability.REQUEST_ID_HEADER: request_id},
+    )
 
 
 @app.exception_handler(StageUnavailableError)
@@ -243,3 +301,44 @@ def healthz(request: Request) -> HealthResponse:
         decisions_held=decisions,
         detail=detail,
     )
+
+
+# The metrics endpoint is registered only when a token exists. Not registered and answering 401,
+# because an unauthenticated metrics endpoint publishes request volumes, error rates and model
+# identity, this service already has three unauthenticated endpoints whose cost had to be bounded by
+# hand, and a route that does not exist cannot be probed.
+#
+# Kept out of the OpenAPI document for the same reason, and because the text exposition format is not
+# JSON and would be the only endpoint in the schema that is not.
+if settings.metrics_token:
+
+    @app.get("/metrics", include_in_schema=False, tags=["operations"])
+    def metrics(request: Request) -> Response:
+        """Prometheus text exposition. Requires the metrics token as a bearer credential."""
+        supplied = request.headers.get("authorization", "")
+        expected = f"Bearer {settings.metrics_token}"
+        # Constant time, so the endpoint cannot be used as an oracle to recover the token.
+        if not secrets.compare_digest(supplied, expected):
+            return Response(status_code=404)
+
+        extra: dict[str, float | int | None] = {}
+        models = getattr(request.app.state, "models", None)
+        if models is not None:
+            extra["decisions_held"] = models.dataset.decided.height
+        try:
+            with transaction() as conn:
+                from auspice.monitor import delivery_health
+
+                health = delivery_health(conn)
+                extra["alerts_pending"] = health["pending"]
+                extra["alerts_abandoned"] = health["abandoned"]
+                extra["alerts_oldest_pending_hours"] = health["oldest_pending_hours"]
+        except Exception:
+            # A scrape must not fail because the database is briefly unreachable. The process level
+            # counters are still true and are the ones that reveal an outage.
+            log.warning("metrics could not read alert delivery health")
+
+        return Response(
+            content=METRICS.render(extra=extra),
+            media_type="text/plain; version=0.0.4; charset=utf-8",
+        )

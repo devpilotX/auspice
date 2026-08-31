@@ -110,6 +110,20 @@ class Settings(BaseSettings):
     ledger_path: Path = Path("data/ledger")
     ledger_anchor_url: str = ""
 
+    # -- Observability -----------------------------------------------------
+    # Both are empty by default and both are fail closed rather than fail open.
+    #
+    # No DSN means no error tracker is started and no network call leaves the process. A service that
+    # reads nothing but public records should not acquire a third party data processor because a
+    # default was left on.
+    #
+    # No metrics token means the /metrics route is not registered at all, rather than registered and
+    # answering 401. An unauthenticated metrics endpoint publishes request volumes, error rates and
+    # model identity, and a route that does not exist cannot be probed.
+    sentry_dsn: str = ""
+    sentry_traces_sample_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    metrics_token: str = ""
+
     # -- Alert delivery ----------------------------------------------------
     # The default is `log`, which needs no credentials. That is deliberate: an unconfigured
     # deployment that writes every alert to the structured log is observably doing the right thing

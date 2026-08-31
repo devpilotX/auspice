@@ -55,7 +55,7 @@ this file against reality before continuing, and resume at the first TODO.
 | # | Task | Status | Evidence |
 |---|---|---|---|
 | 19 | Rule change watch as a surface | TODO | |
-| 20 | Alert delivery | TODO | |
+| 20 | Alert delivery | DONE | 3 channels, migration 0004, 4 CLI commands, 32 tests, checkpoint/023 |
 | 21 | Error tracking, metrics, backups | TODO | |
 | 22 | Portfolio as an async job | TODO | |
 | 23 | Artefact serving seam, trust instrumentation | TODO | |
