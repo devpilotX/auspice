@@ -3,6 +3,29 @@
 Parked, not forgotten. Every CRITICAL and HIGH item gets exactly one more attempt by a different route
 before the run is allowed to finish. Nothing here was silently dropped.
 
+## Sweep, 2026-08-31
+
+D-001 and D-002 were both swept by their third alternative route, and D-001's sweep found a real defect.
+
+**D-001, route (c), static validation.** `tests/unit/test_container_files.py` checks twenty one properties
+of the Dockerfile, compose file, .dockerignore and Caddyfile by parsing them. The check that every extra
+named in the Dockerfile exists in `pyproject.toml` immediately caught a defect this run had introduced:
+the `observability` extra was added to the project and not to the image, so a container with
+`AUSPICE_SENTRY_DSN` set would have logged "configured but not installed" and reported nothing. Fixed.
+The residual gap is unchanged and is stated in that module's docstring: nothing here proves the image
+builds, that Chromium runs, or that uvicorn starts.
+
+**D-002, route (c), assert the invariants without a browser.** `apps/web/tests/unit/csp.spec.ts` asserts
+twenty nine properties of the content security policy, including both bugs the visual suite originally
+caught, as negative assertions: no `strict-dynamic` and no nonce. Web unit tests went from 43 to 72. The
+residual gap is unchanged: no test here renders a page, so a layout regression still needs the visual
+suite, and re-recording the baselines after the brand rename is an operator action.
+
+**D-003 was not swept, because it has no second route.** Extraction accuracy needs a language model key.
+The alternative is hand labelling, which is not a route to measuring extraction accuracy.
+
+**D-004 was not swept.** Revoking a credential is not a local action.
+
 ```
 D-001 | Target: Execution verify the container stack and the PDF memo (DONE criteria 12, 13)
       | Blocked by: docker is not installed on this machine. `docker --version` reports

@@ -69,21 +69,22 @@ fabricated.
 Once decided, `auspice labels quote --url <the right page> --find <a phrase>` produces a verbatim quote
 that cannot fail verification.
 
-## B-006: Two cited sources cannot be verified because they render client side.
+## B-006: One cited source is geo-blocked. Decide whether to replace it or route around it.
 
-Finding NEW-04. `wsbtv.com` parses to 219 characters and `cbs2iowa.com` to 7636, both of which are
-application shell rather than article text. No transcription of any quote from either can be located,
-so those citations stay unverified permanently as things stand.
+Finding NEW-05, which replaces the withdrawn NEW-04. The WSB-TV citation on the Newton County row cannot
+be verified from this host. The publisher answers HTTP 451, and the page reads "This website is unavailable
+in your location", "Error 451", and "It appears you are attempting to access this website from a country
+outside of the United States".
 
-This does not currently block a row: the Newton row now carries a verified primary citation alongside
-the unverifiable WSB-TV one, and the training query needs only one verified item. It will block rows
-whose only source is a client rendered news site.
+No code change alters that. The agent first assumed the page was client rendered and built a headless
+browser path to read it, which is how the real cause was found: the rendered page is the block notice.
 
-The mechanism to fix it already exists in the repository. `pipeline/adapters/` has a Playwright path for
-pages that need JavaScript. `pipeline/extract/verify.py` does not use it. Routing verification through
-that path when a fetch parses to implausibly little text is the fix, and it is engineering rather than
-an operator decision, so it is recorded here only because it explains why two citations will stay
-unverified until it is done.
+This does not block the row. It now carries a verified primary citation to Newton County's own Resolution
+R-040726b, and the training query needs one verified item, so the row counts.
+
+Two routes, and both are the operator's: fetch through a US egress, or replace the citation with a source
+that is not geographically restricted. The second is preferable on principle, because a corpus whose
+provenance can only be checked from one country is a corpus a customer cannot audit.
 
 ## B-004: Two items that are outside software entirely.
 

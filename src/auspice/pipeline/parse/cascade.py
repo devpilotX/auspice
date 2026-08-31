@@ -507,8 +507,10 @@ def parse_html(data: bytes, *, document_id: str) -> ParsedDocument:
 
     Civic platforms serve agendas and minutes as HTML at least as often as PDF, and the tables in
     them carry the vote tallies. selectolax is used rather than a full browser because these are
-    server rendered pages; the pages that genuinely need JavaScript are handled by the Playwright
-    path in the adapters.
+    server rendered pages. A page that genuinely needs JavaScript goes through
+    ``ingest/render.py``, which loads it in a headless browser and hands the settled DOM back to this
+    function. That module is new: this comment previously said the adapters handled such pages, and
+    they did not.
     """
     from selectolax.parser import HTMLParser
 

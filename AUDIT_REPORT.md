@@ -87,7 +87,9 @@ Status values: OPEN, IN PROGRESS, CLOSED, PARKED, OPERATOR.
 | P1-7 | LOW | `slowapi` is declared in the `api` extra and in the mypy overrides while `ratelimit.py` implements its own token bucket. | `pyproject.toml` | CLOSED 2026-08-31. Removed from the extra and the overrides. Dropped three transitive packages with it. | 2026-08-31 |
 | NEW-02 | **HIGH** | A citation on the Newton County row carried the wrong quote entirely: the text stored against the county's official Resolution R-040726b was the headline of the WSB-TV news article cited beside it. The official record was also typed `secondary`. So the row's strongest evidence, a primary source, was both unverifiable and understated as secondary. | `data/labels/decisions.yaml`, `newton-data-center-moratorium-2026` | CLOSED 2026-08-31. Quote replaced with a verbatim span located by `auspice labels quote`, "SO RESOLVED this 7th day of April, 2026, ...", page 2, and the citation retyped `primary`. `auspice labels verify` now reports it verified on page 2 where it previously reported quote not found. This is the class of defect the labelling console exists to prevent. | 2026-08-31 |
 | NEW-03 | **HIGH** | The Linn County row records `adopted_on: 2026-04-08` and `effective_on: 2026-04-08`, and its primary citation points at a county newsflash that describes a different event. That page is posted 1 July 2026, states the board "has approved an 18-month moratorium", says it "takes effect immediately", and refers to the February 2026 ordinance as a separate earlier action. It says nothing about 8 April. The date 8 April 2026 does appear verbatim in the Newton County resolution cited two rows above, as the expiry of Newton's earlier emergency moratorium, which is a plausible route for the value to have crossed rows during labelling. | `data/labels/decisions.yaml`, `linn-data-center-moratorium-2026` | **OPEN, and deliberately left open.** The quote was not repaired. Repairing it would verify the citation and admit the row to training with a date the source does not support, which is worse than an unverified row, because unverified rows are excluded by the training query and verified ones are not. Correcting a labelled fact is the operator's call under the no fabricated labels rule. See B-005. | 2026-08-31 |
-| NEW-04 | MEDIUM | Two cited sources cannot be verified at all because they render client side. The WSB-TV article parses to 219 characters of app furniture, and the CBS2 Iowa article to 7636 characters of the same. No quote can be located in either, so any citation to them stays unverified however it is transcribed. The adapters already have a Playwright path for pages that need JavaScript; citation verification does not use it. | `pipeline/extract/verify.py`, `pipeline/adapters/` | OPEN | 2026-08-31 |
+| NEW-04 | **WITHDRAWN and replaced** | Claimed two cited sources cannot be verified because they render client side, on the strength of measuring how little text their fetches produced. **Both halves were wrong.** Rendering each in a real browser settled it. wsbtv.com is not client rendered: it answers HTTP 451 with "This website is unavailable in your location" and "It appears you are attempting to access this website from a country outside of the United States". cbs2iowa.com renders to 7658 characters of real article text and its plain fetch already produced 7636; it was verifying before this work and never needed rendering, and the 7636 figure quoted in the original finding came from a fetch that had succeeded. | `pipeline/extract/verify.py` | WITHDRAWN 2026-08-31. See [Corrections](#corrections). Superseded by NEW-05 and NEW-06. | 2026-08-31 |
+| NEW-05 | MEDIUM | The WSB-TV citation on the Newton County row cannot be verified from outside the United States. The publisher answers HTTP 451 by geography, so no transcription of any quote from it can ever be located from this host, and no code change alters that. | `data/labels/decisions.yaml`, `newton-data-center-moratorium-2026` | OPEN, and not blocking. That row now carries a verified primary citation to the county's own resolution, so it counts toward training regardless. The remedies are a US egress for the fetcher or replacing the citation with an accessible source, and both are operator decisions. | 2026-08-31 |
+| NEW-06 | LOW | `parse/cascade.py` and `adapters/platforms.py` both refer to "the Playwright path" for pages that need JavaScript, as though it existed. It did not. | `pipeline/parse/cascade.py`, `pipeline/adapters/platforms.py` | CLOSED 2026-08-31. `pipeline/ingest/render.py` is that path, with 19 tests. It is what produced the diagnosis that withdrew NEW-04, and it is needed for the corpus backfill, where civic platforms serve search results through JavaScript. Not wired into citation verification, because no citation currently needs it. | 2026-08-31 |
 | P2-1 | MEDIUM | Models are fitted at startup inside `lifespan`, including MCMC. The artefact loading seam is named in a docstring and not implemented. | `apps/api/app/deps.py` | OPEN | 2026-08-30 |
 | P2-2 | MEDIUM | `monitor/watcher.py` writes rows to an `alert` table and nothing delivers them, so the monitoring line the specification calls the reason revenue recurs has no channel. | `monitor/watcher.py` | OPEN | 2026-08-30 |
 | P2-3 | MEDIUM | No error tracking, no uptime metrics, no automated or tested backups. All three are specified and none exists. | absent | OPEN | 2026-08-30 |
@@ -99,6 +101,33 @@ Status values: OPEN, IN PROGRESS, CLOSED, PARKED, OPERATOR.
 
 Findings that turned out to be wrong. Kept rather than deleted, because an audit that quietly removes its
 mistakes cannot be checked.
+
+### 2026-08-31: NEW-04 was wrong on both counts
+
+**Claimed:** two cited sources cannot be verified because they render client side. WSB-TV parses to 219
+characters of app furniture and CBS2 Iowa to 7636 of the same, so no quote can be located in either, and
+citation verification should route them through a browser.
+
+**Actually:** rendering both in a real browser settled it, and neither half held.
+
+WSB-TV is not client rendered. It answers HTTP 451, and the rendered page reads "This website is
+unavailable in your location", "Error 451", and "It appears you are attempting to access this website from
+a country outside of the United States". A renderer cannot fix a geographic block. Recorded as NEW-05.
+
+CBS2 Iowa renders to 7658 characters of real article text, and its plain fetch already produced 7636. It
+was verifying before this work and never needed rendering at all. The 7636 figure quoted in the finding
+came from a fetch that had succeeded, which was visible in the same `auspice labels verify` output that
+listed the failures: cbs2iowa appeared there twice, marked verified.
+
+**How the error happened:** the claim was inferred from one measurement, the character count of the
+extracted text, without asking why it was low. Two different causes produce a thin parse, a geographic
+block and a client rendered page, and only one of them is a rendering problem. The available evidence
+distinguishing them, the HTTP status and the verify output, was already on screen and was not read.
+
+**What was kept:** `pipeline/ingest/render.py`, because it produced the diagnosis and because
+`parse/cascade.py` and `adapters/platforms.py` both already referred to a Playwright path that did not
+exist. That gap is real and is now closed, recorded as NEW-06. It is deliberately not wired into citation
+verification, since no citation needs it.
 
 ### 2026-08-30: P1-6 was false
 
