@@ -281,13 +281,33 @@ class TestRetention:
 
 
 class TestBinaryDiscovery:
-    def test_the_client_binaries_are_found(self) -> None:
-        """On PATH, or in the toolchain the Windows bootstrap script unpacks under .tools."""
-        assert backup.find_binary("pg_dump").exists()
-        assert backup.find_binary("pg_restore").exists()
-
     def test_an_unknown_binary_names_the_remedy(self) -> None:
+        """Runs anywhere, because it asserts the message rather than the environment."""
         from auspice.errors import StageUnavailableError
 
         with pytest.raises(StageUnavailableError, match="bootstrap-postgres"):
             backup.find_binary("pg_definitely_not_a_real_tool")
+
+    def test_the_client_binaries_are_found(self) -> None:
+        """On PATH, or in the toolchain the Windows bootstrap script unpacks under .tools.
+
+        Skipped rather than failed when they are absent. This is a precondition of the environment,
+        not a property of the code, and an earlier version of it asserted unconditionally and turned a
+        fresh clone red: `.tools/` is ignored and created by `infra/scripts/bootstrap-postgres.ps1`, so
+        a clone that has not been bootstrapped has no binaries and no defect. Found by the IRONCLAD
+        Gate 6 fresh clone run, which is the failure that gate exists to catch.
+        """
+        import shutil
+
+        from auspice.errors import StageUnavailableError
+
+        try:
+            assert backup.find_binary("pg_dump").exists()
+            assert backup.find_binary("pg_restore").exists()
+        except StageUnavailableError:
+            if shutil.which("pg_dump"):
+                raise
+            pytest.skip(
+                "PostgreSQL client binaries are not installed. Run "
+                "infra/scripts/bootstrap-postgres.ps1, or install the client package."
+            )
